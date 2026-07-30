@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>House of Sugar - Admin Dashboard</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Forum&display=swap"
+    rel="stylesheet">
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Firebase Web SDK (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+  <!-- App Wrapper -->
+  <div class="app-container">
+
+    <!-- Mobile Overlay Backdrop -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-logo-container">
+          <img src="./assets/images/logo.png" alt="House of Sugar Logo" class="brand-logo">
+        </div>
+        <div class="brand-title">
+          <h2>House of Sugar</h2>
+          <span>CAKES & TREATS</span>
+        </div>
+        <button class="btn-close mobile-sidebar-close" id="mobile-sidebar-close-btn" aria-label="Close menu">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <ul>
+          <li>
+            <a href="#" class="nav-item active" data-tab="dashboard" id="nav-dashboard">
+              <i data-lucide="layout-dashboard"></i>
+              <span>Dashboard</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="orders" id="nav-orders">
+              <i data-lucide="shopping-bag"></i>
+              <span>Orders</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="calendar" id="nav-calendar">
+              <i data-lucide="calendar"></i>
+              <span>Calendar</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="customers" id="nav-customers">
+              <i data-lucide="users"></i>
+              <span>Customers</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="expenses" id="nav-expenses">
+              <i data-lucide="receipt"></i>
+              <span>Expenses</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="inventory" id="nav-inventory">
+              <i data-lucide="package"></i>
+              <span>Inventory</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="payments" id="nav-payments">
+              <i data-lucide="credit-card"></i>
+              <span>Payments</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="reports" id="nav-reports">
+              <i data-lucide="bar-chart-3"></i>
+              <span>Reports</span>
+            </a>
+          </li>
+          <li>
+            <a href="#" class="nav-item" data-tab="settings" id="nav-settings">
+              <i data-lucide="settings"></i>
+              <span>Settings</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- Sidebar Footer -->
+      <!-- <div class="sidebar-footer">
+        <div class="footer-card">
+          <img src="./assets/images/floral_logo.png" alt="Cupcake Icon" class="footer-cupcake">
+          <p>Every cake has a story, we make yours sweet. ❤️</p>
+        </div>
+      </div> -->
+
+      <!-- Sidebar Profile -->
+      <!-- <div class="sidebar-profile">
+        <img src="./assets/images/floral_logo.png" alt="User Profile" class="profile-avatar">
+        <div class="profile-details">
+          <span class="profile-welcome">Welcome,</span>
+          <span class="profile-name">Robinsali</span>
+          <span class="profile-role">Admin</span>
+        </div>
+        <i data-lucide="chevron-down" class="profile-chevron"></i>
+      </div> -->
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+
+      <!-- Top Header -->
+      <header class="top-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobile-menu-toggle" aria-label="Open Navigation">
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="mobile-brand-title">
+            <span>House of Sugar</span>
+          </div>
+          <div class="dashboard-period-filter">
+            <span class="period-label">Period:</span>
+            <select id="dashboard-period-select" class="form-select period-select">
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <!-- Live Cloud Sync Status Badge -->
+          <div class="cloud-sync-status" id="cloud-sync-status" title="Database Sync Status">
+            <span class="status-dot"></span>
+            <span class="status-text" id="cloud-sync-text">Cloud: Connecting...</span>
+          </div>
+
+          <!-- Calendar Selector -->
+          <div class="header-date-picker">
+            <i data-lucide="calendar-days"></i>
+            <span id="current-header-date">Thursday, July 31, 2025</span>
+          </div>
+
+          <!-- Theme Switcher -->
+          <button class="theme-toggle-btn" id="theme-switcher-btn" title="Toggle Theme">
+            <i data-lucide="sun" class="sun-icon"></i>
+            <i data-lucide="moon" class="moon-icon"></i>
+            <span class="theme-text">Chic Rose</span>
+          </button>
+
+          <!-- Notifications -->
+          <div class="notification-bell" id="notification-trigger">
+            <i data-lucide="bell"></i>
+            <span class="bell-badge" id="notification-count">3</span>
+            <!-- Dropdown -->
+            <div class="notification-dropdown" id="notification-menu">
+              <h3>Notifications</h3>
+              <ul>
+                <li class="unread">
+                  <div class="noti-icon"><i data-lucide="star"></i></div>
+                  <div class="noti-info">
+                    <p>New order received from Sarah Johnson</p>
+                    <span>10 mins ago</span>
+                  </div>
+                </li>
+                <li class="unread">
+                  <div class="noti-icon"><i data-lucide="alert-triangle"></i></div>
+                  <div class="noti-info">
+                    <p>Low stock alert: Butter is below threshold!</p>
+                    <span>2 hours ago</span>
+                  </div>
+                </li>
+                <li>
+                  <div class="noti-icon"><i data-lucide="dollar-sign"></i></div>
+                  <div class="noti-info">
+                    <p>Payment received for order HB-2025-068</p>
+                    <span>Yesterday</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content Panels -->
+      <div class="panel-container">
+
+        <!-- ==================== DASHBOARD PANEL ==================== -->
+        <section class="tab-panel active" id="panel-dashboard">
+
+          <!-- Metrics Row (6 Cards) -->
+          <div class="metrics-grid">
+
+            <div class="metric-card card-orders" id="card-orders-click-target">
+              <div class="metric-info">
+                <span class="metric-label" id="lbl-metric-orders">TODAY'S ORDERS</span>
+                <h2 class="metric-value" id="today-orders-val">8</h2>
+                <a href="#" class="metric-link" id="view-orders-link">View all orders &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-primary-light);">
+                <i data-lucide="shopping-bag"></i>
+              </div>
+            </div>
+
+            <div class="metric-card card-sales" id="card-sales-click-target">
+              <div class="metric-info">
+                <span class="metric-label" id="lbl-metric-sales">TODAY'S SALES</span>
+                <h2 class="metric-value" id="today-sales-val">$1,245.00</h2>
+                <a href="#" class="metric-link" id="view-sales-link">View sales &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-success-bg); color: var(--color-success);">
+                <i data-lucide="dollar-sign"></i>
+              </div>
+            </div>
+
+            <div class="metric-card card-expenses" id="card-expenses-click-target">
+              <div class="metric-info">
+                <span class="metric-label" id="lbl-metric-expenses">TODAY'S EXPENSES</span>
+                <h2 class="metric-value" id="today-expenses-val">$320.50</h2>
+                <a href="#" class="metric-link" id="view-expenses-link">View expenses &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-danger-bg); color: var(--color-danger);">
+                <i data-lucide="calculator"></i>
+              </div>
+            </div>
+
+            <div class="metric-card card-profit" id="card-profit-click-target">
+              <div class="metric-info">
+                <span class="metric-label" id="lbl-metric-profit">TODAY'S PROFIT</span>
+                <h2 class="metric-value" id="today-profit-val">$924.50</h2>
+                <a href="#" class="metric-link" id="view-report-link">View report &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-info-bg); color: var(--color-info);">
+                <i data-lucide="trending-up"></i>
+              </div>
+            </div>
+
+            <div class="metric-card card-pending" id="card-pending-click-target">
+              <div class="metric-info">
+                <span class="metric-label">PENDING ORDERS</span>
+                <h2 class="metric-value" id="pending-orders-val">5</h2>
+                <a href="#" class="metric-link" id="view-pending-link">View pending &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-warning-bg); color: var(--color-warning);">
+                <i data-lucide="clipboard"></i>
+              </div>
+            </div>
+
+            <div class="metric-card card-due" id="card-due-click-target">
+              <div class="metric-info">
+                <span class="metric-label">PAYMENTS DUE</span>
+                <h2 class="metric-value" id="payments-due-val">$560.00</h2>
+                <a href="#" class="metric-link" id="view-payments-link">View payments &rarr;</a>
+              </div>
+              <div class="metric-icon" style="background-color: var(--color-neutral-bg); color: var(--color-neutral);">
+                <i data-lucide="alert-triangle"></i>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Main Layout Grid (2 Columns) -->
+          <div class="dashboard-main-grid">
+
+            <!-- Left Column: Tables & Lists -->
+            <div class="dash-left-col">
+
+              <!-- Orders Table -->
+              <div class="dashboard-card card-orders-table">
+                <div class="card-header">
+                  <h3 class="card-title" id="dashboard-orders-table-title">Today's Orders</h3>
+                  <button class="btn btn-primary btn-sm" id="btn-new-order-dash">
+                    <i data-lucide="plus"></i>
+                    <span>New Order</span>
+                  </button>
+                </div>
+                <div class="table-container" style="box-shadow: none; border: none; margin-bottom: 0;">
+                  <table class="data-table" id="dashboard-orders-table">
+                    <thead>
+                      <tr>
+                        <th>Order ID</th>
+                        <th>Customer</th>
+                        <th>Item</th>
+                        <th>Pickup Time</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Payment</th>
+                        <th style="width: 40px; text-align: center;"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="dashboard-orders-table-body">
+                      <!-- Filled dynamically by JS -->
+                    </tbody>
+                  </table>
+                </div>
+                <div class="card-footer-action" style="margin-top: 10px; padding-top: 12px;">
+                  <a href="#" onclick="app.switchTab('orders')" class="view-all-link">View all orders &rarr;</a>
+                </div>
+              </div>
+
+              <!-- Bottom Row: Recent Expenses & Mini Calendar -->
+              <div class="dash-left-bottom-grid">
+
+                <!-- Recent Expenses -->
+                <div class="dashboard-card card-recent-expenses">
+                  <div class="card-header">
+                    <h3 class="card-title">Recent Expenses</h3>
+                    <button class="btn btn-outline btn-sm" id="btn-add-expense-dash">
+                      <i data-lucide="plus"></i>
+                      <span>Add Expense</span>
+                    </button>
+                  </div>
+                  <div class="recent-expenses-list" id="dashboard-recent-expenses">
+                    <!-- Filled dynamically by JS -->
+                  </div>
+                  <div class="card-footer-action">
+                    <a href="#" onclick="app.switchTab('expenses')" class="view-all-link">View all expenses &rarr;</a>
+                  </div>
+                </div>
+
+                <!-- Interactive Mini Calendar & Daily List -->
+                <div class="dashboard-card card-mini-calendar">
+                  <div class="card-header">
+                    <h3 class="card-title">Upcoming Orders</h3>
+                    <div class="calendar-navigation" style="gap: 5px;">
+                      <button class="btn-icon btn-sm" id="btn-dash-cal-prev" style="width:26px; height:26px;"><i
+                          data-lucide="chevron-left" style="width:12px; height:12px;"></i></button>
+                      <span id="dashboard-mini-calendar-month-year"
+                        style="font-size:0.8rem; font-weight:600; min-width:85px; text-align:center;">August 2025</span>
+                      <button class="btn-icon btn-sm" id="btn-dash-cal-next" style="width:26px; height:26px;"><i
+                          data-lucide="chevron-right" style="width:12px; height:12px;"></i></button>
+                    </div>
+                  </div>
+
+                  <div class="mini-calendar-split-container">
+                    <!-- Mini Calendar Calendar Grid -->
+                    <div class="mini-calendar-grid-wrapper">
+                      <div class="mini-calendar-days-header">
+                        <div>S</div>
+                        <div>M</div>
+                        <div>T</div>
+                        <div>W</div>
+                        <div>T</div>
+                        <div>F</div>
+                        <div>S</div>
+                      </div>
+                      <div class="mini-calendar-cells" id="dashboard-mini-calendar-cells">
+                        <!-- Filled by JS -->
+                      </div>
+                    </div>
+
+                    <!-- Selected Date Events List -->
+                    <div class="mini-calendar-events-list">
+                      <div class="mini-calendar-selected-date" id="dashboard-mini-calendar-selected-date-label">Thu,
+                        July 31, 2025</div>
+                      <div class="mini-calendar-events-container" id="dashboard-mini-calendar-events">
+                        <!-- Filled by JS -->
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card-footer-action">
+                    <a href="#" onclick="app.switchTab('calendar')" class="view-all-link">View calendar &rarr;</a>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            <!-- Right Column: Charts & Side widgets -->
+            <div class="dash-right-col">
+
+              <!-- Sales Overview Line Chart -->
+              <div class="dashboard-card card-sales-chart">
+                <div class="card-header" style="margin-bottom: 12px;">
+                  <div>
+                    <h3 class="card-title">Sales Overview</h3>
+                    <h2 class="chart-header-value" id="week-sales-total">$4,650.00</h2>
+                  </div>
+                  <div class="card-header-actions"
+                    style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
+                    <select id="sales-chart-period-select" class="form-select form-control-sm"
+                      style="padding: 3px 8px; border-radius: 8px;">
+                      <option value="week">This Week</option>
+                      <option value="month">This Month</option>
+                      <option value="year">This Year</option>
+                    </select>
+                    <div class="metric-variance up" style="font-size:0.75rem;">
+                      <i data-lucide="trending-up" style="width:10px; height:10px;"></i>
+                      <span>18% vs last week</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="chart-container" style="min-height: 180px;">
+                  <canvas id="salesOverviewChart"></canvas>
+                </div>
+              </div>
+
+              <!-- Expense Summary Donut Chart -->
+              <div class="dashboard-card card-expenses-donut">
+                <div class="card-header" style="margin-bottom: 10px;">
+                  <h3 class="card-title">Expense Summary</h3>
+                  <select id="expense-chart-period-select" class="form-select form-control-sm"
+                    style="padding: 3px 8px; border-radius: 8px;">
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="year">This Year</option>
+                  </select>
+                </div>
+                <div class="donut-chart-wrapper" style="flex-direction: column; gap: 15px;">
+                  <div class="donut-chart-container" style="width:130px; height:130px;">
+                    <canvas id="ordersOverviewChart"></canvas>
+                    <div class="donut-center-text">
+                      <span class="donut-num" id="donut-total-orders" style="font-size:1.15rem;">$1,850.75</span>
+                      <span class="donut-label" style="font-size:0.55rem;">Total</span>
+                    </div>
+                  </div>
+                  <div class="expense-summary-legend" id="expense-summary-category-legend">
+                    <!-- Filled dynamically by JS -->
+                  </div>
+                </div>
+                <div class="card-footer-action" style="margin-top: 10px; padding-top: 10px;">
+                  <a href="#" onclick="app.switchTab('expenses')" class="view-all-link">View all expenses &rarr;</a>
+                </div>
+              </div>
+
+              <!-- Top Selling Products -->
+              <div class="dashboard-card card-top-selling">
+                <div class="card-header" style="margin-bottom: 10px;">
+                  <h3 class="card-title">Top Selling Products</h3>
+                  <select id="products-chart-period-select" class="form-select form-control-sm"
+                    style="padding: 3px 8px; border-radius: 8px;">
+                    <option value="month">This Month</option>
+                    <option value="week">This Week</option>
+                    <option value="year">This Year</option>
+                  </select>
+                </div>
+                <div class="top-products-list" id="dashboard-top-products" style="margin-top: 5px;">
+                  <!-- Filled dynamically by JS -->
+                </div>
+                <div class="card-footer-action" style="margin-top: 10px; padding-top: 10px;">
+                  <a href="#" onclick="app.switchTab('reports', {reportType: 'products'})" class="view-all-link">View
+                    full report &rarr;</a>
+                </div>
+              </div>
+
+            </div>
+        </section>
+
+        <!-- ==================== ORDERS PANEL ==================== -->
+        <section class="tab-panel" id="panel-orders">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Orders</h2>
+              <p>Manage and track all your orders.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-new-order-trigger">
+              <i data-lucide="plus"></i>
+              <span>New Order</span>
+            </button>
+          </div>
+
+          <!-- Filters Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="order-search-input" placeholder="Search order, customer, phone...">
+            </div>
+
+            <div class="filter-actions">
+              <select id="order-status-filter" class="form-select">
+                <option value="all">All Status</option>
+                <option value="Confirmed">Confirmed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Ready">Ready</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+
+              <select id="order-payment-filter" class="form-select">
+                <option value="all">All Payment</option>
+                <option value="Paid">Paid</option>
+                <option value="Deposit Paid">Deposit Paid</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="table-container">
+            <table class="data-table" id="orders-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Customer</th>
+                  <th>Items</th>
+                  <th>Pickup Date & Time</th>
+                  <th>Amount</th>
+                  <th>Payment</th>
+                  <th>Status</th>
+                  <th style="width: 80px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="orders-table-body">
+                <!-- Generated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="table-pagination">
+            <span class="pagination-info" id="orders-pagination-info">Showing 1 to 5 of 28 orders</span>
+            <div class="pagination-controls" id="orders-pagination-controls">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== CALENDAR PANEL ==================== -->
+        <section class="tab-panel" id="panel-calendar">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Calendar</h2>
+              <p>View all orders by date.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-calendar-new-order">
+              <i data-lucide="plus"></i>
+              <span>New Order</span>
+            </button>
+          </div>
+
+          <!-- Calendar Controls -->
+          <div class="calendar-toolbar">
+            <div class="calendar-navigation">
+              <button class="btn-icon" id="btn-calendar-prev"><i data-lucide="chevron-left"></i></button>
+              <h3 id="calendar-month-year">August 2025</h3>
+              <button class="btn-icon" id="btn-calendar-next"><i data-lucide="chevron-right"></i></button>
+            </div>
+
+            <div class="calendar-view-modes">
+              <button class="btn btn-sm active" id="calendar-mode-month">Month</button>
+              <button class="btn btn-sm" id="calendar-mode-week" disabled>Week</button>
+              <button class="btn btn-sm" id="calendar-mode-day" disabled>Day</button>
+            </div>
+          </div>
+
+          <!-- Calendar Grid -->
+          <div class="calendar-container">
+            <div class="calendar-days-header">
+              <div>Sun</div>
+              <div>Mon</div>
+              <div>Tue</div>
+              <div>Wed</div>
+              <div>Thu</div>
+              <div>Fri</div>
+              <div>Sat</div>
+            </div>
+            <div class="calendar-grid" id="calendar-grid-cells">
+              <!-- Populated dynamically by JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== CUSTOMERS PANEL ==================== -->
+        <section class="tab-panel" id="panel-customers">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Customers</h2>
+              <p>Manage your customers.</p>
+            </div>
+            <button class="btn btn-primary" id="btn-add-customer-trigger">
+              <i data-lucide="plus"></i>
+              <span>Add Customer</span>
+            </button>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="customer-search-input" placeholder="Search customer, phone, email...">
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-container">
+            <table class="data-table" id="customers-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Total Orders</th>
+                  <th>Total Spent</th>
+                  <th>Last Order</th>
+                  <th style="width: 80px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="customers-table-body">
+                <!-- Generated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="table-pagination">
+            <span class="pagination-info" id="customers-pagination-info">Showing 1 to 5 of 5 customers</span>
+            <div class="pagination-controls" id="customers-pagination-controls">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== EXPENSES PANEL ==================== -->
+        <section class="tab-panel" id="panel-expenses">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Expenses</h2>
+              <p>Track all your business expenses.</p>
+            </div>
+            <div class="panel-header-actions">
+              <button class="btn btn-outline" id="btn-expense-categories-trigger">
+                <i data-lucide="tag"></i>
+                <span>Expense Categories</span>
+              </button>
+              <button class="btn btn-primary" id="btn-add-expense-trigger">
+                <i data-lucide="plus"></i>
+                <span>Add Expense</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="expense-search-input" placeholder="Search expense, item, notes...">
+            </div>
+
+            <div class="filter-actions">
+              <select id="expense-category-filter" class="form-select">
+                <option value="all">All Categories</option>
+                <!-- Filled dynamically -->
+              </select>
+
+              <div class="date-range-picker">
+                <input type="date" id="expense-date-start" class="form-control-sm">
+                <span>to</span>
+                <input type="date" id="expense-date-end" class="form-control-sm">
+              </div>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-container">
+            <table class="data-table" id="expenses-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Item</th>
+                  <th>Amount</th>
+                  <th>Payment Method</th>
+                  <th>Notes</th>
+                  <th style="width: 80px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="expenses-table-body">
+                <!-- Generated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Summary Footer Row -->
+          <div class="expense-summary-footer">
+            <span>Total Expenses: <strong id="expenses-total-summary">$0.00</strong></span>
+          </div>
+
+          <!-- Pagination -->
+          <div class="table-pagination">
+            <span class="pagination-info" id="expenses-pagination-info">Showing 1 to 5 of 8 expenses</span>
+            <div class="pagination-controls" id="expenses-pagination-controls">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== INVENTORY PANEL ==================== -->
+        <section class="tab-panel" id="panel-inventory">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Inventory</h2>
+              <p>Track your stock and manage inventory.</p>
+            </div>
+            <div class="panel-header-actions">
+              <button class="btn btn-outline" id="btn-inventory-categories-trigger">
+                <i data-lucide="folder"></i>
+                <span>Manage Categories</span>
+              </button>
+              <button class="btn btn-primary" id="btn-add-inventory-trigger">
+                <i data-lucide="plus"></i>
+                <span>Add Item</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="inventory-search-input" placeholder="Search items...">
+            </div>
+
+            <div class="filter-actions">
+              <select id="inventory-category-filter" class="form-select">
+                <option value="all">All Categories</option>
+                <!-- Filled dynamically -->
+              </select>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-container">
+            <table class="data-table" id="inventory-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Category</th>
+                  <th>Current Stock</th>
+                  <th>Unit</th>
+                  <th>Low Stock Alert</th>
+                  <th>Status</th>
+                  <th style="width: 80px; text-align: center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="inventory-table-body">
+                <!-- Generated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="table-pagination">
+            <span class="pagination-info" id="inventory-pagination-info">Showing 1 to 6 of 6 items</span>
+            <div class="pagination-controls" id="inventory-pagination-controls">
+              <!-- Generated by JS -->
+            </div>
+        </section>
+
+        <!-- ==================== PAYMENTS PANEL ==================== -->
+        <section class="tab-panel" id="panel-payments">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Payments Ledger</h2>
+              <p>View all transactions and invoice payments.</p>
+            </div>
+          </div>
+
+          <!-- Filters Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-box">
+              <i data-lucide="search"></i>
+              <input type="text" id="payment-search-input" placeholder="Search payments, customer, order ID...">
+            </div>
+
+            <div class="filter-actions">
+              <select id="payment-status-filter" class="form-select">
+                <option value="all">All Payment Status</option>
+                <option value="Paid">Paid</option>
+                <option value="Deposit Paid">Deposit Paid</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="table-container">
+            <table class="data-table" id="payments-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Customer</th>
+                  <th>Pickup Date</th>
+                  <th>Order Amount</th>
+                  <th>Payment Status</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="payments-table-body">
+                <!-- Filled dynamically by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="table-pagination">
+            <span class="pagination-info" id="payments-pagination-info">Showing 1 to 5 of 28 payments</span>
+            <div class="pagination-controls" id="payments-pagination-controls">
+              <!-- Generated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== REPORTS PANEL ==================== -->
+        <section class="tab-panel" id="panel-reports">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Reports</h2>
+              <p>View your business reports and insights.</p>
+            </div>
+
+            <div class="panel-header-actions">
+              <div class="date-range-picker">
+                <input type="date" id="report-date-start" class="form-control-sm">
+                <span>to</span>
+                <input type="date" id="report-date-end" class="form-control-sm">
+              </div>
+              <button class="btn btn-outline" id="btn-export-report">
+                <i data-lucide="download"></i>
+                <span>Export</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Inner Sidebar Layout -->
+          <div class="reports-layout">
+
+            <!-- Reports Sub-Menu -->
+            <div class="reports-sidebar">
+              <ul>
+                <li>
+                  <a href="#" class="report-tab-item active" data-report="sales">
+                    <i data-lucide="dollar-sign"></i>
+                    <span>Sales Report</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#" class="report-tab-item" data-report="expenses">
+                    <i data-lucide="receipt"></i>
+                    <span>Expense Report</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#" class="report-tab-item" data-report="profit">
+                    <i data-lucide="piggy-bank"></i>
+                    <span>Profit Report</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#" class="report-tab-item" data-report="products">
+                    <i data-lucide="pie-chart"></i>
+                    <span>Best Selling Products</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#" class="report-tab-item" data-report="customers">
+                    <i data-lucide="users"></i>
+                    <span>Top Customers</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Report Dashboard Panels -->
+            <div class="reports-main">
+
+              <!-- Report Metrics Row -->
+              <div class="report-metrics-row">
+                <div class="report-metric-box">
+                  <span class="box-label" id="rep-metric-1-label">Total Sales</span>
+                  <h3 class="box-value" id="rep-metric-1-value">$12,450.00</h3>
+                </div>
+                <div class="report-metric-box">
+                  <span class="box-label" id="rep-metric-2-label">Total Orders</span>
+                  <h3 class="box-value" id="rep-metric-2-value">28</h3>
+                </div>
+                <div class="report-metric-box">
+                  <span class="box-label" id="rep-metric-3-label">Average Order Value</span>
+                  <h3 class="box-value" id="rep-metric-3-value">$444.64</h3>
+                </div>
+                <div class="report-metric-box">
+                  <span class="box-label" id="rep-metric-4-label">Growth</span>
+                  <h3 class="box-value text-success" id="rep-metric-4-value">+ 18%</h3>
+                </div>
+              </div>
+
+              <!-- Chart Visual Area -->
+              <div class="dashboard-card report-chart-card">
+                <div class="card-header">
+                  <h3 class="card-title" id="report-chart-title">Sales Report Chart</h3>
+                </div>
+                <div class="report-chart-container">
+                  <canvas id="reportsMainChart"></canvas>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ==================== SETTINGS PANEL ==================== -->
+        <section class="tab-panel" id="panel-settings">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Settings</h2>
+              <p>Manage your account and business settings.</p>
+            </div>
+          </div>
+
+          <div class="settings-layout">
+            <!-- Settings sub-tabs -->
+            <div class="settings-sidebar">
+              <ul>
+                <li><a href="#" class="settings-tab-item active" data-settings-section="business-info">Business
+                    Information</a></li>
+                <li><a href="#" class="settings-tab-item" data-settings-section="profile-settings">Profile</a></li>
+                <li><a href="#" class="settings-tab-item" data-settings-section="users-settings">Users</a></li>
+                <li><a href="#" class="settings-tab-item" data-settings-section="payment-settings">Payment Methods</a>
+                </li>
+                <li><a href="#" class="settings-tab-item"
+                    data-settings-section="notification-settings">Notifications</a></li>
+                <li><a href="#" class="settings-tab-item" data-settings-section="backup-settings">Backup & Export</a>
+                </li>
+              </ul>
+            </div>
+
+            <div class="settings-main">
+
+              <!-- Section: Business Information -->
+              <div class="settings-section active" id="settings-business-info">
+                <h3>Business Information</h3>
+                <form id="business-info-form" class="settings-form">
+                  <div class="form-group">
+                    <label class="form-label">Business Name</label>
+                    <input type="text" id="setting-biz-name" class="form-control" value="House of Sugar">
+                  </div>
+
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label">Email</label>
+                      <input type="email" id="setting-biz-email" class="form-control" value="hello@houseofsugar.ca">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Phone</label>
+                      <input type="text" id="setting-biz-phone" class="form-control" value="(647) 123-4567">
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Address</label>
+                    <input type="text" id="setting-biz-address" class="form-control" value="Toronto, Ontario, Canada">
+                  </div>
+
+                  <div class="form-row-2">
+                    <div class="form-group">
+                      <label class="form-label">Currency</label>
+                      <select id="setting-biz-currency" class="form-select">
+                        <option value="CAD">CAD - Canadian Dollar</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="INR">INR - Indian Rupee</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Time Zone</label>
+                      <select id="setting-biz-timezone" class="form-select">
+                        <option value="EST">EST - (UTC-05:00) Eastern Time</option>
+                        <option value="CST">CST - (UTC-06:00) Central Time</option>
+                        <option value="PST">PST - (UTC-08:00) Pacific Time</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary" style="margin-top: 15px;">Save Changes</button>
+                </form>
+              </div>
+
+              <!-- Section: Backup & Export -->
+              <div class="settings-section" id="settings-backup-settings">
+                <h3>Backup & Export</h3>
+                <p class="section-desc">Download your database locally to back up your data or migrate it. You can
+                  restore your data by uploading the backup JSON file.</p>
+
+                <div class="backup-actions">
+                  <div class="backup-box">
+                    <h4>Export Database</h4>
+                    <p>Export all orders, expenses, customers, inventory stock levels, and settings into a JSON backup
+                      file.</p>
+                    <button class="btn btn-outline" id="btn-backup-export">
+                      <i data-lucide="download"></i>
+                      <span>Export Data (.json)</span>
+                    </button>
+                  </div>
+
+                  <div class="backup-box">
+                    <h4>Restore Database</h4>
+                    <p>Import a previously exported JSON backup file. WARNING: This will overwrite your current settings
+                      and data.</p>
+                    <div class="import-file-selector">
+                      <input type="file" id="backup-import-file" accept=".json" class="form-control-file">
+                      <button class="btn btn-primary" id="btn-backup-import">
+                        <i data-lucide="upload"></i>
+                        <span>Upload and Restore</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="backup-box danger-zone">
+                    <h4 class="text-danger">Danger Zone</h4>
+                    <p>Wipe all data stored in local storage and reset to original demo seed data.</p>
+                    <button class="btn btn-danger" id="btn-reset-db">
+                      <i data-lucide="trash-2"></i>
+                      <span>Reset to Seed Data</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="backup-box" style="margin-top: 25px; border-color: var(--color-primary);">
+                  <h4 style="color: var(--color-primary); display:flex; align-items:center; gap:8px;">
+                    <i data-lucide="cloud"></i>
+                    <span>Live Cloud Sync & Multi-Device Storage</span>
+                  </h4>
+                  <p>Your orders, expenses, inventory, and customer data sync live in the cloud. Any changes on your phone immediately reflect on your laptop and vice versa.</p>
+                  <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+                    <button class="btn btn-primary" id="btn-sync-local-to-cloud">
+                      <i data-lucide="cloud-upload"></i>
+                      <span>Push All Local Data to Cloud DB</span>
+                    </button>
+                    <button class="btn btn-outline" id="btn-pull-cloud-data">
+                      <i data-lucide="refresh-cw"></i>
+                      <span>Force Refresh Cloud Data</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Placeholder Sections -->
+              <div class="settings-section" id="settings-profile-settings">
+                <h3>Profile Settings</h3>
+                <p>Configure your administrator user profile details here.</p>
+              </div>
+              <div class="settings-section" id="settings-users-settings">
+                <h3>Users & Permissions</h3>
+                <p>Manage users who have access to this bakery dashboard panel.</p>
+              </div>
+              <div class="settings-section" id="settings-payment-settings">
+                <h3>Payment Gateways</h3>
+                <p>Setup invoice and payment methods configurations (Cash, Cards, E-Transfer, Deposits).</p>
+              </div>
+              <div class="settings-section" id="settings-notification-settings">
+                <h3>Notification Settings</h3>
+                <p>Configure alerts for inventory thresholds and order updates.</p>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Order Modal (New / Edit) -->
+  <div class="modal-overlay" id="orderModal">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h3 id="orderModalTitle">New Order</h3>
+        <button class="btn-close" id="btn-order-modal-close"><i data-lucide="x"></i></button>
+      </div>
+      <form id="orderForm">
+        <input type="hidden" id="order-form-id">
+        <div class="modal-body">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Customer Name *</label>
+              <input type="text" id="order-form-customer" class="form-control" required
+                placeholder="e.g. Sarah Johnson">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Phone Number *</label>
+              <input type="text" id="order-form-phone" class="form-control" required placeholder="e.g. (647) 555-1234">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="order-form-email" class="form-control" placeholder="e.g. sarah@gmail.com">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Order Items * <span class="input-helper">(e.g. 12x Floral Cupcakes, 1x Birthday
+                Cake (2.5kg))</span></label>
+            <textarea id="order-form-items" class="form-control" rows="3" required
+              placeholder="Describe items, sizes, or flavors..."></textarea>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Pickup Date & Time *</label>
+              <input type="datetime-local" id="order-form-pickup" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Total Amount ($) *</label>
+              <input type="number" step="0.01" min="0" id="order-form-amount" class="form-control" required
+                placeholder="0.00">
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Payment Status</label>
+              <select id="order-form-payment" class="form-select">
+                <option value="Paid">Paid</option>
+                <option value="Deposit Paid">Deposit Paid</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Order Status</label>
+              <select id="order-form-status" class="form-select">
+                <option value="Confirmed">Confirmed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Ready">Ready</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Notes</label>
+            <textarea id="order-form-notes" class="form-control" rows="2"
+              placeholder="Dietary restrictions, design references, custom requests..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-order-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Expense Modal (New / Edit) -->
+  <div class="modal-overlay" id="expenseModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="expenseModalTitle">Add Expense</h3>
+        <button class="btn-close" id="btn-expense-modal-close"><i data-lucide="x"></i></button>
+      </div>
+      <form id="expenseForm">
+        <input type="hidden" id="expense-form-id">
+        <div class="modal-body">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Date *</label>
+              <input type="date" id="expense-form-date" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category *</label>
+              <select id="expense-form-category" class="form-select" required>
+                <!-- Filled dynamically by JS -->
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Expense Item *</label>
+            <input type="text" id="expense-form-item" class="form-control" required
+              placeholder="e.g. Butter (10kg), Electricity Bill">
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Amount ($) *</label>
+              <input type="number" step="0.01" min="0" id="expense-form-amount" class="form-control" required
+                placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payment Method</label>
+              <select id="expense-form-method" class="form-select">
+                <option value="Cash">Cash</option>
+                <option value="Card">Card</option>
+                <option value="Online">Online</option>
+                <option value="Cheque">Cheque</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Notes</label>
+            <textarea id="expense-form-notes" class="form-control" rows="2"
+              placeholder="e.g. Flour mill invoice #9923"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-expense-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Customer Modal (New / Edit) -->
+  <div class="modal-overlay" id="customerModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="customerModalTitle">Add Customer</h3>
+        <button class="btn-close" id="btn-customer-modal-close"><i data-lucide="x"></i></button>
+      </div>
+      <form id="customerForm">
+        <input type="hidden" id="customer-form-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Customer Name *</label>
+            <input type="text" id="customer-form-name" class="form-control" required placeholder="e.g. John Doe">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Phone Number *</label>
+            <input type="text" id="customer-form-phone" class="form-control" required placeholder="e.g. (647) 555-9988">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="customer-form-email" class="form-control" placeholder="e.g. john@gmail.com">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-customer-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Inventory Modal (New / Edit) -->
+  <div class="modal-overlay" id="inventoryModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="inventoryModalTitle">Add Inventory Item</h3>
+        <button class="btn-close" id="btn-inventory-modal-close"><i data-lucide="x"></i></button>
+      </div>
+      <form id="inventoryForm">
+        <input type="hidden" id="inventory-form-id">
+        <div class="modal-body">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Item Name *</label>
+              <input type="text" id="inventory-form-name" class="form-control" required
+                placeholder="e.g. Sugar, Cake Box 10inch">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category *</label>
+              <select id="inventory-form-category" class="form-select" required>
+                <!-- Filled dynamically -->
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">Current Stock *</label>
+              <input type="number" step="0.1" min="0" id="inventory-form-stock" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Unit *</label>
+              <input type="text" id="inventory-form-unit" class="form-control" placeholder="e.g. kg, pcs, bags"
+                required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Low Stock Threshold *</label>
+              <input type="number" step="0.1" min="0" id="inventory-form-threshold" class="form-control" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-inventory-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Expense Categories Modal -->
+  <div class="modal-overlay" id="expenseCategoriesModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Manage Expense Categories</h3>
+        <button class="btn-close" id="btn-expense-cat-close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="manage-list-section">
+          <form id="addExpenseCategoryForm" class="add-inline-form">
+            <input type="text" id="new-expense-category-input" class="form-control" placeholder="New category name..."
+              required>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+
+          <ul class="manage-item-list" id="expense-categories-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Inventory Categories Modal -->
+  <div class="modal-overlay" id="inventoryCategoriesModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Manage Inventory Categories</h3>
+        <button class="btn-close" id="btn-inventory-cat-close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="manage-list-section">
+          <form id="addInventoryCategoryForm" class="add-inline-form">
+            <input type="text" id="new-inventory-category-input" class="form-control" placeholder="New category name..."
+              required>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+
+          <ul class="manage-item-list" id="inventory-categories-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+    <a href="#" class="mobile-nav-item active" data-tab="dashboard" id="mob-nav-dashboard">
+      <i data-lucide="layout-dashboard"></i>
+      <span>Home</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-tab="orders" id="mob-nav-orders">
+      <i data-lucide="shopping-bag"></i>
+      <span>Orders</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-tab="calendar" id="mob-nav-calendar">
+      <i data-lucide="calendar"></i>
+      <span>Calendar</span>
+    </a>
+    <a href="#" class="mobile-nav-item" data-tab="expenses" id="mob-nav-expenses">
+      <i data-lucide="receipt"></i>
+      <span>Expenses</span>
+    </a>
+    <a href="#" class="mobile-nav-item" id="mob-nav-more">
+      <i data-lucide="menu"></i>
+      <span>Menu</span>
+    </a>
+  </nav>
+
+  <!-- Mobile Floating Action Button (FAB) -->
+  <button class="mobile-fab" id="mobile-fab" title="Quick New Order" aria-label="Quick New Order">
+    <i data-lucide="plus"></i>
+  </button>
+
+  <!-- Scripts -->
+  <script src="./app.js"></script>
+</body>
+
+</html>
