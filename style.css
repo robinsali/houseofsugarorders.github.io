@@ -329,6 +329,50 @@ html[data-theme="dark"] .footer-card {
   box-shadow: 0 0 6px rgba(231, 76, 60, 0.5);
 }
 
+/* Google Drive Sync Header */
+.drive-sync-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-drive-signin,
+.btn-drive-signout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-app);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-drive-signin:hover {
+  background-color: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.btn-drive-signout:hover {
+  background-color: var(--color-danger);
+  color: #fff;
+  border-color: var(--color-danger);
+}
+
+.btn-drive-signin svg,
+.btn-drive-signout svg,
+.btn-drive-signout i {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
 .header-date-picker {
   display: flex;
   align-items: center;

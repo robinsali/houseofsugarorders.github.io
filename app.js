@@ -55,7 +55,7 @@ const app = {
     this.setupEventListeners();
     this.switchTab('dashboard');
     this.updateGlobalHeader();
-    this.initCloudDatabase();
+    this.initGoogleDrive();
 
     // Initialise Lucide icons
     lucide.createIcons();
@@ -95,175 +95,260 @@ const app = {
   },
 
   // ----------------------------------------------------
-  // FIREBASE CLOUD DATABASE & MULTI-DEVICE SYNC ENGINE
+  // GOOGLE DRIVE SYNC ENGINE (OAuth — no API key needed)
   // ----------------------------------------------------
-  db: null,
+  // Replace the placeholder below with your OAuth 2.0 Client ID from Google Cloud Console.
+  // The Client ID is safe to commit publicly — it is NOT a secret.
+  // Setup guide: see walkthrough.md in the project documentation.
+  GOOGLE_CLIENT_ID: '186068315207-7ceuk54pdnfdp0pdhk3qlil890gs1n1d.apps.googleusercontent.com',
+  DRIVE_FILE_NAME: 'house-of-sugar-data.json',
+
+  driveFileId: null,
   isCloudSynced: false,
+  accessToken: null,
+  tokenClient: null,
+  saveDriveTimer: null,
 
-  initCloudDatabase() {
+  initGoogleDrive() {
+    // Restore cached OAuth token if still valid
     try {
-      const firebaseConfig = JSON.parse(localStorage.getItem('hos_firebase_config')) || {
-        apiKey: "AIzaSyD7C4riN-G9zQl3YQ88l_NqF_tskzq-qBE",
-        authDomain: "house-of-sugar.firebaseapp.com",
-        projectId: "house-of-sugar",
-        storageBucket: "house-of-sugar.firebasestorage.app",
-        messagingSenderId: "814539005173",
-        appId: "1:814539005173:web:8a9762f298fad5062479bc",
-        measurementId: "G-5DM3Q63BVV"
-      };
-
-      if (window.firebase && !firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
+      const cached = JSON.parse(localStorage.getItem('hos_drive_token') || 'null');
+      if (cached && cached.expires_at > Date.now()) {
+        this.accessToken = cached.token;
+        this.updateSignInUI(true);
+        this.loadFromDrive();
+        return;
       }
+    } catch (e) { }
+    localStorage.removeItem('hos_drive_token');
 
-      if (window.firebase && firebase.firestore) {
-        this.db = firebase.firestore();
-
-        // Enable offline persistence so phone works offline & syncs automatically when online
-        this.db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-          console.warn("Firestore offline persistence notice:", err.code);
-        });
-
-        this.setupCloudRealtimeListeners();
-        this.updateCloudStatus(true, "Cloud Sync: Live");
+    // Wait for Google Identity Services to load, then show sign-in prompt
+    const waitForGIS = () => {
+      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        this.updateCloudStatus(false, 'Drive: Sign In Required');
+        this.updateSignInUI(false);
       } else {
-        this.updateCloudStatus(false, "Local Cache Only");
+        setTimeout(waitForGIS, 300);
       }
-    } catch (err) {
-      console.warn("Cloud DB initialising local fallback mode:", err);
-      this.updateCloudStatus(false, "Local Cache Active");
+    };
+    waitForGIS();
+  },
+
+  _getTokenClient() {
+    if (!this.tokenClient) {
+      this.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: this.GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/drive.appdata',
+        callback: (tokenResponse) => {
+          if (tokenResponse.error) {
+            console.warn('Google OAuth error:', tokenResponse.error);
+            this.updateCloudStatus(false, 'Drive: Auth Failed');
+            return;
+          }
+          this.accessToken = tokenResponse.access_token;
+          const expiresAt = Date.now() + (tokenResponse.expires_in * 1000);
+          localStorage.setItem('hos_drive_token', JSON.stringify({
+            token: this.accessToken,
+            expires_at: expiresAt
+          }));
+          this.updateSignInUI(true);
+          this.loadFromDrive();
+        }
+      });
     }
+    return this.tokenClient;
+  },
+
+  handleSignIn() {
+    if (typeof google === 'undefined' || !google.accounts) {
+      alert('Google services are still loading. Please try again in a moment.');
+      return;
+    }
+    this._getTokenClient().requestAccessToken({ prompt: '' });
+  },
+
+  handleSignOut() {
+    if (this.accessToken) {
+      google.accounts.oauth2.revoke(this.accessToken, () => { });
+    }
+    this.accessToken = null;
+    this.driveFileId = null;
+    this.tokenClient = null;
+    localStorage.removeItem('hos_drive_token');
+    this.updateSignInUI(false);
+    this.updateCloudStatus(false, 'Drive: Signed Out');
+  },
+
+  updateSignInUI(isSignedIn) {
+    // Header buttons
+    const signInBtn = document.getElementById('btn-google-signin');
+    const signOutBtn = document.getElementById('btn-google-signout');
+    // Settings page buttons
+    const settingsSignIn = document.getElementById('btn-google-signin-settings');
+    const settingsSyncNow = document.getElementById('btn-drive-sync-now');
+    const settingsReload = document.getElementById('btn-drive-reload');
+    const settingsSignOut = document.getElementById('btn-google-signout-settings');
+
+    if (signInBtn) signInBtn.style.display = isSignedIn ? 'none' : '';
+    if (signOutBtn) signOutBtn.style.display = isSignedIn ? '' : 'none';
+    if (settingsSignIn) settingsSignIn.style.display = isSignedIn ? 'none' : '';
+    if (settingsSyncNow) settingsSyncNow.style.display = isSignedIn ? '' : 'none';
+    if (settingsReload) settingsReload.style.display = isSignedIn ? '' : 'none';
+    if (settingsSignOut) settingsSignOut.style.display = isSignedIn ? '' : 'none';
   },
 
   updateCloudStatus(isLive, text) {
     const dot = document.querySelector('#cloud-sync-status .status-dot');
     const label = document.getElementById('cloud-sync-text');
     if (dot) {
-      if (isLive) {
-        dot.classList.add('online');
-        dot.classList.remove('offline');
-      } else {
-        dot.classList.remove('online');
-      }
+      dot.classList.toggle('online', isLive);
+      dot.classList.toggle('offline', !isLive);
     }
     if (label) label.textContent = text;
     this.isCloudSynced = isLive;
   },
 
-  setupCloudRealtimeListeners() {
-    if (!this.db) return;
+  async loadFromDrive() {
+    if (!this.accessToken) return;
+    try {
+      this.updateCloudStatus(false, 'Drive: Loading...');
 
-    // 1. Realtime Orders listener across all devices
-    this.db.collection('orders').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        const cloudOrders = [];
-        snapshot.forEach(doc => {
-          cloudOrders.push({ id: doc.id, ...doc.data() });
-        });
-        this.orders = cloudOrders;
-        localStorage.setItem('hos_orders', JSON.stringify(this.orders));
+      // Search for existing data file in app's private folder
+      const listRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'${this.DRIVE_FILE_NAME}'&fields=files(id%2Cname)`,
+        { headers: { Authorization: `Bearer ${this.accessToken}` } }
+      );
+      if (listRes.status === 401) throw { status: 401 };
+      if (!listRes.ok) throw { status: listRes.status };
+
+      const listData = await listRes.json();
+
+      if (listData.files && listData.files.length > 0) {
+        this.driveFileId = listData.files[0].id;
+
+        // Download file content
+        const fileRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${this.driveFileId}?alt=media`,
+          { headers: { Authorization: `Bearer ${this.accessToken}` } }
+        );
+        if (fileRes.status === 401) throw { status: 401 };
+        if (!fileRes.ok) throw { status: fileRes.status };
+
+        const data = await fileRes.json();
+
+        // Merge Drive data into app state
+        if (data.orders) this.orders = data.orders;
+        if (data.expenses) this.expenses = data.expenses;
+        if (data.customers) this.customers = data.customers;
+        if (data.inventory) this.inventory = data.inventory;
+        if (data.expenseCategories) this.expenseCategories = data.expenseCategories;
+        if (data.inventoryCategories) this.inventoryCategories = data.inventoryCategories;
+        if (data.settings) this.settings = data.settings;
+
+        // Update localStorage cache & refresh UI
+        this.saveState();
         this.refreshActiveTabTable();
         if (this.activeTab === 'dashboard') this.renderDashboard();
-      }
-    }, err => console.warn("Firestore orders listener error:", err));
 
-    // 2. Realtime Expenses listener
-    this.db.collection('expenses').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        const cloudExpenses = [];
-        snapshot.forEach(doc => {
-          cloudExpenses.push({ id: doc.id, ...doc.data() });
-        });
-        this.expenses = cloudExpenses;
-        localStorage.setItem('hos_expenses', JSON.stringify(this.expenses));
-        this.refreshActiveTabTable();
-        if (this.activeTab === 'dashboard') this.renderDashboard();
+        this.updateCloudStatus(true, 'Drive: Live ✓');
+      } else {
+        // No file yet — push current local data to Drive for the first time
+        await this.saveToDriveNow();
       }
-    }, err => console.warn("Firestore expenses listener error:", err));
-
-    // 3. Realtime Customers listener
-    this.db.collection('customers').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        const cloudCustomers = [];
-        snapshot.forEach(doc => {
-          cloudCustomers.push({ id: doc.id, ...doc.data() });
-        });
-        this.customers = cloudCustomers;
-        localStorage.setItem('hos_customers', JSON.stringify(this.customers));
-        if (this.activeTab === 'customers') this.renderCustomersTable();
+    } catch (err) {
+      console.warn('Drive load error:', err);
+      if (err.status === 401) {
+        this.accessToken = null;
+        localStorage.removeItem('hos_drive_token');
+        this.updateSignInUI(false);
+        this.updateCloudStatus(false, 'Drive: Session Expired — Sign In Again');
+      } else {
+        this.updateCloudStatus(false, 'Drive: Sync Error (using local cache)');
       }
-    }, err => console.warn("Firestore customers listener error:", err));
-
-    // 4. Realtime Inventory listener
-    this.db.collection('inventory').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        const cloudInventory = [];
-        snapshot.forEach(doc => {
-          cloudInventory.push({ id: doc.id, ...doc.data() });
-        });
-        this.inventory = cloudInventory;
-        localStorage.setItem('hos_inventory', JSON.stringify(this.inventory));
-        if (this.activeTab === 'inventory') this.renderInventoryTable();
-      }
-    }, err => console.warn("Firestore inventory listener error:", err));
-  },
-
-  // Push single document mutation to Cloud DB
-  syncDocToCloud(collectionName, id, data) {
-    if (this.db) {
-      this.db.collection(collectionName).doc(id).set(data, { merge: true })
-        .then(() => this.updateCloudStatus(true, "Cloud Sync: Live"))
-        .catch(err => console.warn(`Cloud write error for ${collectionName}/${id}:`, err));
     }
   },
 
-  deleteDocFromCloud(collectionName, id) {
-    if (this.db) {
-      this.db.collection(collectionName).doc(id).delete()
-        .catch(err => console.warn(`Cloud delete error for ${collectionName}/${id}:`, err));
+  // Debounced save — auto-triggered 2s after any data change
+  saveToDrive() {
+    clearTimeout(this.saveDriveTimer);
+    this.saveDriveTimer = setTimeout(() => this.saveToDriveNow(), 2000);
+  },
+
+  // Immediate save to Google Drive (full snapshot)
+  async saveToDriveNow() {
+    if (!this.accessToken) return;
+    try {
+      this.updateCloudStatus(false, 'Drive: Saving...');
+      const content = JSON.stringify({
+        orders: this.orders,
+        expenses: this.expenses,
+        customers: this.customers,
+        inventory: this.inventory,
+        expenseCategories: this.expenseCategories,
+        inventoryCategories: this.inventoryCategories,
+        settings: this.settings,
+        lastSaved: new Date().toISOString()
+      });
+
+      let res;
+      if (this.driveFileId) {
+        // Update existing file (simple media upload)
+        res = await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${this.driveFileId}?uploadType=media`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: content
+          }
+        );
+      } else {
+        // Create new file with metadata in appDataFolder (multipart upload)
+        const form = new FormData();
+        form.append('metadata', new Blob(
+          [JSON.stringify({ name: this.DRIVE_FILE_NAME, parents: ['appDataFolder'] })],
+          { type: 'application/json' }
+        ));
+        form.append('file', new Blob([content], { type: 'application/json' }));
+        res = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${this.accessToken}` },
+            body: form
+          }
+        );
+        if (res.ok) {
+          const created = await res.json();
+          this.driveFileId = created.id;
+        }
+      }
+
+      if (res.status === 401) throw { status: 401 };
+      if (!res.ok) throw { status: res.status };
+
+      this.updateCloudStatus(true, 'Drive: Saved ✓');
+      setTimeout(() => {
+        if (this.isCloudSynced) this.updateCloudStatus(true, 'Drive: Live ✓');
+      }, 2000);
+    } catch (err) {
+      console.warn('Drive save error:', err);
+      if (err.status === 401) {
+        this.accessToken = null;
+        localStorage.removeItem('hos_drive_token');
+        this.updateSignInUI(false);
+        this.updateCloudStatus(false, 'Drive: Session Expired — Sign In Again');
+      } else {
+        this.updateCloudStatus(false, 'Drive: Save Failed (local cache ok)');
+      }
     }
   },
 
-  // 1-Click Migration of Local Data to Cloud DB
-  pushLocalDataToCloud() {
-    if (!this.db) {
-      alert("Cloud database connection is currently in offline/local mode.");
-      return;
-    }
-
-    let count = 0;
-    const batch = this.db.batch();
-
-    this.orders.forEach(o => {
-      const ref = this.db.collection('orders').doc(o.id);
-      batch.set(ref, o, { merge: true });
-      count++;
-    });
-
-    this.expenses.forEach(e => {
-      const ref = this.db.collection('expenses').doc(e.id);
-      batch.set(ref, e, { merge: true });
-      count++;
-    });
-
-    this.customers.forEach(c => {
-      const ref = this.db.collection('customers').doc(c.id);
-      batch.set(ref, c, { merge: true });
-      count++;
-    });
-
-    this.inventory.forEach(i => {
-      const ref = this.db.collection('inventory').doc(i.id);
-      batch.set(ref, i, { merge: true });
-      count++;
-    });
-
-    batch.commit().then(() => {
-      alert(`Success! Pushed ${count} records to Cloud Database. All devices (mobile & laptop) are now synced live!`);
-      this.updateCloudStatus(true, "Cloud Sync: Live");
-    }).catch(err => {
-      alert("Error syncing to Cloud DB: " + err.message);
-    });
+  // Kept for backward compatibility (called by settings button)
+  syncToDriveNow() {
+    return this.saveToDriveNow();
   },
 
   // Seed default data matching user's screenshots
@@ -470,18 +555,6 @@ const app = {
       });
     }
 
-    // Cloud DB Settings Buttons
-    const btnSyncCloud = document.getElementById('btn-sync-local-to-cloud');
-    if (btnSyncCloud) {
-      btnSyncCloud.addEventListener('click', () => this.pushLocalDataToCloud());
-    }
-    const btnPullCloud = document.getElementById('btn-pull-cloud-data');
-    if (btnPullCloud) {
-      btnPullCloud.addEventListener('click', () => {
-        this.setupCloudRealtimeListeners();
-        alert("Refreshing Cloud Database connection & syncing data...");
-      });
-    }
 
     // Theme Toggle
     document.getElementById('theme-switcher-btn').addEventListener('click', () => {
@@ -2208,7 +2281,7 @@ const app = {
     this.updateCustomerProfile(customerName, customerPhone, customerEmail, amount);
 
     this.saveState();
-    if (targetOrder) this.syncDocToCloud('orders', targetOrder.id, targetOrder);
+    if (targetOrder) this.saveToDrive();
 
     this.closeModal('orderModal');
 
@@ -2264,7 +2337,7 @@ const app = {
     if (confirm(`Are you sure you want to delete order ${id}?`)) {
       this.orders = this.orders.filter(o => o.id !== id);
       this.saveState();
-      this.deleteDocFromCloud('orders', id);
+      this.saveToDrive();
       this.refreshActiveTabTable();
     }
   },
@@ -2293,7 +2366,7 @@ const app = {
     }
 
     this.saveState();
-    if (targetExp) this.syncDocToCloud('expenses', targetExp.id, targetExp);
+    if (targetExp) this.saveToDrive();
 
     this.closeModal('expenseModal');
 
@@ -2322,7 +2395,7 @@ const app = {
     if (confirm("Are you sure you want to delete this expense transaction?")) {
       this.expenses = this.expenses.filter(e => e.id !== id);
       this.saveState();
-      this.deleteDocFromCloud('expenses', id);
+      this.saveToDrive();
       this.refreshActiveTabTable();
     }
   },
@@ -2348,7 +2421,7 @@ const app = {
     }
 
     this.saveState();
-    if (targetCust) this.syncDocToCloud('customers', targetCust.id, targetCust);
+    if (targetCust) this.saveToDrive();
 
     this.closeModal('customerModal');
     this.renderCustomersTable();
@@ -2372,7 +2445,7 @@ const app = {
     if (confirm("Are you sure you want to delete this customer?")) {
       this.customers = this.customers.filter(c => c.id !== id);
       this.saveState();
-      this.deleteDocFromCloud('customers', id);
+      this.saveToDrive();
       this.renderCustomersTable();
     }
   },
@@ -2400,7 +2473,7 @@ const app = {
     }
 
     this.saveState();
-    if (targetInv) this.syncDocToCloud('inventory', targetInv.id, targetInv);
+    if (targetInv) this.saveToDrive();
 
     this.closeModal('inventoryModal');
     this.renderInventoryTable();
@@ -2426,7 +2499,7 @@ const app = {
     if (confirm("Are you sure you want to delete this inventory item?")) {
       this.inventory = this.inventory.filter(i => i.id !== id);
       this.saveState();
-      this.deleteDocFromCloud('inventory', id);
+      this.saveToDrive();
       this.renderInventoryTable();
     }
   },
