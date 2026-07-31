@@ -3209,12 +3209,12 @@ const app = {
             </thead>
             <tbody>
               ${(r.ingredients || []).map((ing, idx) => {
-                const price = parseFloat(ing.price) || 0;
-                const size = parseFloat(ing.size) || 1;
-                const qty = parseFloat(ing.qty) || 0;
-                const perUnit = size > 0 ? price / size : 0;
-                const cost = perUnit * qty;
-                return `
+      const price = parseFloat(ing.price) || 0;
+      const size = parseFloat(ing.size) || 1;
+      const qty = parseFloat(ing.qty) || 0;
+      const perUnit = size > 0 ? price / size : 0;
+      const cost = perUnit * qty;
+      return `
                   <tr>
                     <td><input type="text" class="costing-input-sm" value="${ing.name}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'name', this.value)"></td>
                     <td><input type="number" step="0.01" class="costing-input-sm" value="${ing.price}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'price', this.value)"></td>
@@ -3231,7 +3231,7 @@ const app = {
                     ` : ''}
                   </tr>
                 `;
-              }).join('')}
+    }).join('')}
             </tbody>
           </table>
           <div style="margin-top:12px; text-align:right; font-size:0.88rem; font-weight:700;">
@@ -3266,10 +3266,10 @@ const app = {
               </thead>
               <tbody>
                 ${(r.labor || []).map((l, idx) => {
-                  const rate = parseFloat(l.rate) || 0;
-                  const hours = parseFloat(l.hours) || 0;
-                  const cost = rate * hours;
-                  return `
+      const rate = parseFloat(l.rate) || 0;
+      const hours = parseFloat(l.hours) || 0;
+      const cost = rate * hours;
+      return `
                     <tr>
                       <td><input type="text" class="costing-input-sm" value="${l.task}" onchange="app.updateRecipeLabor('${r.id}', ${idx}, 'task', this.value)"></td>
                       <td><input type="number" step="0.5" class="costing-input-sm" value="${l.rate}" onchange="app.updateRecipeLabor('${r.id}', ${idx}, 'rate', this.value)"></td>
@@ -3284,7 +3284,7 @@ const app = {
                       ` : ''}
                     </tr>
                   `;
-                }).join('')}
+    }).join('')}
               </tbody>
             </table>
           </div>
@@ -3315,12 +3315,12 @@ const app = {
               </thead>
               <tbody>
                 ${(r.packaging || []).map((p, idx) => {
-                  const price = parseFloat(p.price) || 0;
-                  const size = parseFloat(p.size) || 1;
-                  const qty = parseFloat(p.qty) || 0;
-                  const perUnit = size > 0 ? price / size : 0;
-                  const cost = perUnit * qty;
-                  return `
+      const price = parseFloat(p.price) || 0;
+      const size = parseFloat(p.size) || 1;
+      const qty = parseFloat(p.qty) || 0;
+      const perUnit = size > 0 ? price / size : 0;
+      const cost = perUnit * qty;
+      return `
                     <tr>
                       <td><input type="text" class="costing-input-sm" value="${p.item}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'item', this.value)"></td>
                       <td><input type="number" step="0.01" class="costing-input-sm" value="${p.price}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'price', this.value)"></td>
@@ -3336,7 +3336,7 @@ const app = {
                       ` : ''}
                     </tr>
                   `;
-                }).join('')}
+    }).join('')}
               </tbody>
             </table>
           </div>
@@ -3571,27 +3571,27 @@ const app = {
 
   // App field definitions for mapping
   _orderFields: [
-    { key: 'customerName',  label: 'Customer Name',     required: true,  aliases: ['name', 'customer', 'client', 'customer name'] },
-    { key: 'items',         label: 'Order Details',     required: true,  aliases: ['details', 'items', 'order', 'product', 'description', 'cake', 'item'] },
-    { key: 'customerPhone', label: 'Phone',             required: false, aliases: ['phone', 'mobile', 'contact', 'tel'] },
+    { key: 'customerName', label: 'Customer Name', required: true, aliases: ['name', 'customer', 'client', 'customer name'] },
+    { key: 'items', label: 'Order Details', required: true, aliases: ['details', 'items', 'order', 'product', 'description', 'cake', 'item'] },
+    { key: 'customerPhone', label: 'Phone', required: false, aliases: ['phone', 'mobile', 'contact', 'tel'] },
     { key: 'customerEmail', label: 'Email / Social ID', required: false, aliases: ['email', 'social', 'instagram', 'media id', 'email/social media id', 'social media'] },
-    { key: 'platform',      label: 'Owner / Platform',  required: false, aliases: ['owner', 'platform', 'channel', 'source'] },
-    { key: 'orderStatus',   label: 'Status',            required: false, aliases: ['status', 'order status', 'state'] },
-    { key: 'pickupDate',    label: 'Due Date',          required: false, aliases: ['due date', 'date', 'pickup', 'delivery date', 'pickup date'] },
-    { key: 'total',         label: 'Total Price',       required: false, aliases: ['total price', 'total', 'amount', 'price', 'grand total'] },
-    { key: 'advance',       label: 'Advance',           required: false, aliases: ['advance', 'deposit', 'paid', 'advance paid'] },
-    { key: 'remaining',     label: 'Pending Price',     required: false, aliases: ['pending price', 'pending', 'remaining', 'balance', 'due', 'outstanding'] },
-    { key: 'payments',      label: 'Mode of Payment',  required: false, aliases: ['mode of payment', 'payment mode', 'payment method', 'payment', 'mode'] },
-    { key: 'notes',         label: 'Notes',             required: false, aliases: ['notes', 'remarks', 'comment', 'special instructions'] }
+    { key: 'platform', label: 'Owner / Platform', required: false, aliases: ['owner', 'platform', 'channel', 'source'] },
+    { key: 'orderStatus', label: 'Status', required: false, aliases: ['status', 'order status', 'state'] },
+    { key: 'pickupDate', label: 'Due Date', required: false, aliases: ['due date', 'date', 'pickup', 'delivery date', 'pickup date'] },
+    { key: 'total', label: 'Total Price', required: false, aliases: ['total price', 'total', 'amount', 'price', 'grand total'] },
+    { key: 'advance', label: 'Advance', required: false, aliases: ['advance', 'deposit', 'paid', 'advance paid'] },
+    { key: 'remaining', label: 'Pending Price', required: false, aliases: ['pending price', 'pending', 'remaining', 'balance', 'due', 'outstanding'] },
+    { key: 'payments', label: 'Mode of Payment', required: false, aliases: ['mode of payment', 'payment mode', 'payment method', 'payment', 'mode'] },
+    { key: 'notes', label: 'Notes', required: false, aliases: ['notes', 'remarks', 'comment', 'special instructions'] }
   ],
 
   _expenseFields: [
-    { key: 'date',        label: 'Date',             required: true,  aliases: ['date', 'transaction date', 'expense date'] },
-    { key: 'item',        label: 'Description',      required: true,  aliases: ['description', 'item', 'expense item', 'sub-description', 'name', 'subdescription'] },
-    { key: 'category',   label: 'Category',         required: false, aliases: ['category', 'type', 'type of transaction', 'expense type'] },
-    { key: 'amount',     label: 'Amount',           required: true,  aliases: ['amount', 'total', 'price', 'cost', 'value'] },
-    { key: 'method',     label: 'Payment Method',   required: false, aliases: ['payment method', 'method', 'payment mode', 'mode', 'paid via'] },
-    { key: 'notes',      label: 'Notes',            required: false, aliases: ['notes', 'remarks', 'comment', 'status', 'reference'] }
+    { key: 'date', label: 'Date', required: true, aliases: ['date', 'transaction date', 'expense date'] },
+    { key: 'item', label: 'Description', required: true, aliases: ['description', 'item', 'expense item', 'sub-description', 'name', 'subdescription'] },
+    { key: 'category', label: 'Category', required: false, aliases: ['category', 'type', 'type of transaction', 'expense type'] },
+    { key: 'amount', label: 'Amount', required: true, aliases: ['amount', 'total', 'price', 'cost', 'value'] },
+    { key: 'method', label: 'Payment Method', required: false, aliases: ['payment method', 'method', 'payment mode', 'mode', 'paid via'] },
+    { key: 'notes', label: 'Notes', required: false, aliases: ['notes', 'remarks', 'comment', 'status', 'reference'] }
   ],
 
   openImportModal(type) {
@@ -3859,15 +3859,15 @@ const app = {
             }
           }
 
-          const total    = parseFloat(row[mapping.total]    || 0) || 0;
-          const advance  = parseFloat(row[mapping.advance]  || 0) || 0;
+          const total = parseFloat(row[mapping.total] || 0) || 0;
+          const advance = parseFloat(row[mapping.advance] || 0) || 0;
           const remaining = mapping.remaining
             ? (parseFloat(row[mapping.remaining] || 0) || 0)
             : Math.max(0, total - advance);
 
-          const platform    = (row[mapping.platform]    || '').trim();
-          const orderStatus = (row[mapping.orderStatus]  || 'Completed').trim();
-          const notes       = (row[mapping.notes]        || '').trim();
+          const platform = (row[mapping.platform] || '').trim();
+          const orderStatus = (row[mapping.orderStatus] || 'Completed').trim();
+          const notes = (row[mapping.notes] || '').trim();
           const customerPhone = (row[mapping.customerPhone] || '').trim();
           const customerEmail = (row[mapping.customerEmail] || '').trim();
 
@@ -3921,7 +3921,7 @@ const app = {
           }
 
           const method = (row[mapping.method] || 'Cash').trim() || 'Cash';
-          const notes  = (row[mapping.notes]  || '').trim();
+          const notes = (row[mapping.notes] || '').trim();
 
           const newId = `EXP-IMP-${Date.now()}-${imported}`;
           this.expenses.push({ id: newId, date, category, item, amount, method, notes });
@@ -3960,7 +3960,7 @@ const app = {
     const d = new Date(str);
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
     // Try common formats: DD/MM/YYYY or MM/DD/YYYY
-    const parts = str.split(/[\/\-\.]/); 
+    const parts = str.split(/[\/\-\.]/);
     if (parts.length === 3) {
       const y = parts[2].length === 4 ? parts[2] : '20' + parts[2];
       const m = parts[1].padStart(2, '0');
