@@ -818,6 +818,24 @@ const app = {
 
     // Import Modal Event Listeners
     this.setupImportModalListeners();
+
+    // Top Calendar Logo click handler (shows toast popup with full date)
+    const datePickerEl = document.querySelector('.header-date-picker');
+    if (datePickerEl) {
+      datePickerEl.addEventListener('click', () => {
+        const fullDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        let toast = document.getElementById('header-date-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'header-date-toast';
+          toast.className = 'header-date-toast';
+          document.body.appendChild(toast);
+        }
+        toast.textContent = `📅 Today: ${fullDate}`;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3500);
+      });
+    }
   },
 
   // Switch Tab Panels
@@ -901,8 +919,9 @@ const app = {
 
   updateGlobalHeader() {
     // Current Header Date text
-    const opt = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-    document.getElementById('current-header-date').textContent = new Date().toLocaleDateString('en-US', opt);
+    const opt = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+    const el = document.getElementById('current-header-date');
+    if (el) el.textContent = new Date().toLocaleDateString('en-US', opt);
   },
 
   // ----------------------------------------------------

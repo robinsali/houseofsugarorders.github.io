@@ -2392,15 +2392,7 @@ html, body {
   }
 
   .mobile-brand-title {
-    display: block;
-    font-family: var(--font-title);
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: var(--color-text-main);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 140px;
+    display: none;
   }
 
   .header-left {
@@ -2409,11 +2401,10 @@ html, body {
     gap: 8px;
     flex: 1;
     min-width: 0;
-    overflow: hidden;
   }
 
   .dashboard-period-filter {
-    display: flex;
+    display: flex !important;
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
@@ -2424,9 +2415,14 @@ html, body {
   }
 
   .period-select {
-    padding: 4px 8px;
-    font-size: 0.78rem;
+    padding: 5px 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
     border-radius: 8px;
+    background-color: var(--color-input-bg);
+    border: 1px solid var(--color-input-border);
+    color: var(--color-text-main);
+    max-width: 125px;
   }
 
   .header-right {
@@ -2435,11 +2431,25 @@ html, body {
   }
 
   .header-date-picker {
-    padding: 6px 8px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    border-radius: 10px;
+    background: var(--color-primary-light);
+    transition: transform 0.15s ease;
+  }
+
+  .header-date-picker:active {
+    transform: scale(0.95);
   }
 
   .header-date-picker span {
-    display: none;
+    display: inline-block !important;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
   }
 
   .theme-toggle-btn .theme-text {
@@ -2448,6 +2458,33 @@ html, body {
 
   .theme-toggle-btn {
     padding: 6px 10px;
+  }
+
+  /* Header Date Toast Popup */
+  .header-date-toast {
+    position: fixed;
+    top: 65px;
+    right: 20px;
+    background: var(--color-bg-panel);
+    color: var(--color-text-main);
+    border: 1px solid var(--color-primary);
+    box-shadow: var(--shadow-lg);
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: all 0.25s ease;
+    pointer-events: none;
+  }
+
+  .header-date-toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
   }
 
   /* Main Content Area Mobile Spacing */
