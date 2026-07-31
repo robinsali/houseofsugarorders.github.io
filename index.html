@@ -15,6 +15,9 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
+  <!-- SheetJS for Excel/CSV Parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -87,6 +90,12 @@
             </a>
           </li>
           <li>
+            <a href="#" class="nav-item" data-tab="recipes" id="nav-recipes">
+              <i data-lucide="calculator"></i>
+              <span>Recipe Costing</span>
+            </a>
+          </li>
+          <li>
             <a href="#" class="nav-item" data-tab="payments" id="nav-payments">
               <i data-lucide="credit-card"></i>
               <span>Payments</span>
@@ -142,6 +151,7 @@
           <div class="dashboard-period-filter">
             <span class="period-label">Period:</span>
             <select id="dashboard-period-select" class="form-select period-select">
+              <option value="all">All Time</option>
               <option value="today">Today</option>
               <option value="week">This Week</option>
               <option value="month">This Month</option>
@@ -157,11 +167,26 @@
               <span class="status-dot"></span>
               <span class="status-text" id="cloud-sync-text">Drive: Loading...</span>
             </div>
-            <button class="btn-drive-signin" id="btn-google-signin" onclick="app.handleSignIn()" title="Sign in with Google to enable Drive sync" style="display:none;">
-              <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            <button class="btn-drive-signin" id="btn-google-signin" onclick="app.handleSignIn()"
+              title="Sign in with Google to enable Drive sync" style="display:none;">
+              <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4" />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853" />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                  fill="#FBBC05" />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335" />
+              </svg>
               Sign in with Google
             </button>
-            <button class="btn-drive-signout" id="btn-google-signout" onclick="app.handleSignOut()" title="Sign out of Google Drive" style="display:none;">
+            <button class="btn-drive-signout" id="btn-google-signout" onclick="app.handleSignOut()"
+              title="Sign out of Google Drive" style="display:none;">
               <i data-lucide="log-out"></i>
               Sign out
             </button>
@@ -315,9 +340,12 @@
                         <th>Customer</th>
                         <th>Item</th>
                         <th>Pickup Time</th>
-                        <th>Amount</th>
+                        <th>Advance</th>
+                        <th>Remaining</th>
+                        <th>Total</th>
                         <th>Status</th>
                         <th>Payment</th>
+                        <th>Platform</th>
                         <th style="width: 40px; text-align: center;"></th>
                       </tr>
                     </thead>
@@ -488,10 +516,16 @@
               <h2>Orders</h2>
               <p>Manage and track all your orders.</p>
             </div>
-            <button class="btn btn-primary" id="btn-new-order-trigger">
-              <i data-lucide="plus"></i>
-              <span>New Order</span>
-            </button>
+            <div class="panel-header-actions">
+              <button class="btn btn-outline" id="btn-import-orders-trigger">
+                <i data-lucide="upload"></i>
+                <span>Import</span>
+              </button>
+              <button class="btn btn-primary" id="btn-new-order-trigger">
+                <i data-lucide="plus"></i>
+                <span>New Order</span>
+              </button>
+            </div>
           </div>
 
           <!-- Filters Toolbar -->
@@ -529,8 +563,11 @@
                   <th>Customer</th>
                   <th>Items</th>
                   <th>Pickup Date & Time</th>
-                  <th>Amount</th>
+                  <th>Advance</th>
+                  <th>Remaining</th>
+                  <th>Total</th>
                   <th>Payment</th>
+                  <th>Platform</th>
                   <th>Status</th>
                   <th style="width: 80px; text-align: center;">Action</th>
                 </tr>
@@ -543,6 +580,15 @@
 
           <!-- Pagination -->
           <div class="table-pagination">
+            <div class="pagination-rows-selector">
+              <label>Rows:</label>
+              <select id="orders-rows-select" class="form-select pagination-rows-select">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </div>
             <span class="pagination-info" id="orders-pagination-info">Showing 1 to 5 of 28 orders</span>
             <div class="pagination-controls" id="orders-pagination-controls">
               <!-- Generated by JS -->
@@ -638,6 +684,15 @@
 
           <!-- Pagination -->
           <div class="table-pagination">
+            <div class="pagination-rows-selector">
+              <label>Rows:</label>
+              <select id="customers-rows-select" class="form-select pagination-rows-select">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </div>
             <span class="pagination-info" id="customers-pagination-info">Showing 1 to 5 of 5 customers</span>
             <div class="pagination-controls" id="customers-pagination-controls">
               <!-- Generated by JS -->
@@ -656,6 +711,10 @@
               <button class="btn btn-outline" id="btn-expense-categories-trigger">
                 <i data-lucide="tag"></i>
                 <span>Expense Categories</span>
+              </button>
+              <button class="btn btn-outline" id="btn-import-expenses-trigger">
+                <i data-lucide="upload"></i>
+                <span>Import</span>
               </button>
               <button class="btn btn-primary" id="btn-add-expense-trigger">
                 <i data-lucide="plus"></i>
@@ -712,6 +771,15 @@
 
           <!-- Pagination -->
           <div class="table-pagination">
+            <div class="pagination-rows-selector">
+              <label>Rows:</label>
+              <select id="expenses-rows-select" class="form-select pagination-rows-select">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </div>
             <span class="pagination-info" id="expenses-pagination-info">Showing 1 to 5 of 8 expenses</span>
             <div class="pagination-controls" id="expenses-pagination-controls">
               <!-- Generated by JS -->
@@ -775,10 +843,20 @@
 
           <!-- Pagination -->
           <div class="table-pagination">
+            <div class="pagination-rows-selector">
+              <label>Rows:</label>
+              <select id="inventory-rows-select" class="form-select pagination-rows-select">
+                <option value="6">6</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </div>
             <span class="pagination-info" id="inventory-pagination-info">Showing 1 to 6 of 6 items</span>
             <div class="pagination-controls" id="inventory-pagination-controls">
               <!-- Generated by JS -->
             </div>
+          </div>
         </section>
 
         <!-- ==================== PAYMENTS PANEL ==================== -->
@@ -815,8 +893,10 @@
                   <th>Order ID</th>
                   <th>Customer</th>
                   <th>Pickup Date</th>
-                  <th>Order Amount</th>
-                  <th>Payment Status</th>
+                  <th>Advance</th>
+                  <th>Remaining</th>
+                  <th>Total</th>
+                  <th>Payment Received</th>
                   <th>Notes</th>
                 </tr>
               </thead>
@@ -828,10 +908,48 @@
 
           <!-- Pagination -->
           <div class="table-pagination">
+            <div class="pagination-rows-selector">
+              <label>Rows:</label>
+              <select id="payments-rows-select" class="form-select pagination-rows-select">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </div>
             <span class="pagination-info" id="payments-pagination-info">Showing 1 to 5 of 28 payments</span>
             <div class="pagination-controls" id="payments-pagination-controls">
               <!-- Generated by JS -->
             </div>
+          </div>
+        </section>
+
+        <!-- ==================== RECIPE COSTING PANEL ==================== -->
+        <section class="tab-panel" id="panel-recipes">
+          <div class="panel-header">
+            <div class="panel-header-title">
+              <h2>Recipe & Product Costing Calculator</h2>
+              <p>Break down ingredients, preparation, packaging, and delivery costs per product to calculate exact net
+                profit margins.</p>
+            </div>
+          </div>
+
+          <!-- Recipe Horizontal Product Selector Tabs -->
+          <div class="recipe-tabs-wrapper">
+            <div class="recipe-tabs-scroll">
+              <div class="recipe-tabs-list" id="recipe-tabs-list">
+                <!-- Dynamically populated product tabs -->
+              </div>
+            </div>
+            <button class="recipe-tab-btn recipe-add-fixed-btn" id="recipe-tab-add-btn">
+              <i data-lucide="plus" style="width:13px; height:13px;"></i>
+              <span>Add Recipe</span>
+            </button>
+          </div>
+
+          <!-- Active Recipe Costing Workspace -->
+          <div id="recipe-costing-workspace">
+            <!-- Dynamically rendered active recipe editor & calculation summary -->
           </div>
         </section>
 
@@ -1051,29 +1169,64 @@
 
                 <div class="backup-box" style="margin-top: 25px; border-color: var(--color-primary);">
                   <h4 style="color: var(--color-primary); display:flex; align-items:center; gap:8px;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                      style="flex-shrink:0">
+                      <path
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                        fill="#4285F4" />
+                      <path
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                        fill="#34A853" />
+                      <path
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                        fill="#FBBC05" />
+                      <path
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                        fill="#EA4335" />
+                    </svg>
                     <span>Google Drive Sync &amp; Multi-Device Storage</span>
                   </h4>
-                  <p>Your data syncs to your own private Google Drive. No API keys — uses Google Sign-In (OAuth). Works on phone &amp; laptop with the same Google account.</p>
+                  <p>Your data syncs to your own private Google Drive. No API keys — uses Google Sign-In (OAuth). Works
+                    on phone &amp; laptop with the same Google account.</p>
                   <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; align-items:center;">
-                    <button class="btn btn-primary" id="btn-google-signin-settings" onclick="app.handleSignIn()" style="display:none;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                    <button class="btn btn-primary" id="btn-google-signin-settings" onclick="app.handleSignIn()"
+                      style="display:none;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          fill="#4285F4" />
+                        <path
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          fill="#34A853" />
+                        <path
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                          fill="#FBBC05" />
+                        <path
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                          fill="#EA4335" />
+                      </svg>
                       Sign in with Google
                     </button>
-                    <button class="btn btn-primary" id="btn-drive-sync-now" onclick="app.syncToDriveNow()" style="display:none;">
+                    <button class="btn btn-primary" id="btn-drive-sync-now" onclick="app.syncToDriveNow()"
+                      style="display:none;">
                       <i data-lucide="cloud-upload"></i>
                       <span>Save to Drive Now</span>
                     </button>
-                    <button class="btn btn-outline" id="btn-drive-reload" onclick="app.loadFromDrive()" style="display:none;">
+                    <button class="btn btn-outline" id="btn-drive-reload" onclick="app.loadFromDrive()"
+                      style="display:none;">
                       <i data-lucide="refresh-cw"></i>
                       <span>Pull Latest from Drive</span>
                     </button>
-                    <button class="btn btn-outline" id="btn-google-signout-settings" onclick="app.handleSignOut()" style="display:none;">
+                    <button class="btn btn-outline" id="btn-google-signout-settings" onclick="app.handleSignOut()"
+                      style="display:none;">
                       <i data-lucide="log-out"></i>
                       <span>Sign Out of Google</span>
                     </button>
                   </div>
-                  <p style="margin-top:10px; font-size:12px; opacity:0.6;">Data saved as <code>house-of-sugar-data.json</code> in your Google Drive app folder (private, not visible in Drive UI).</p>
+                  <p style="margin-top:10px; font-size:12px; opacity:0.6;">Data saved as
+                    <code>house-of-sugar-data.json</code> in your Google Drive app folder (private, not visible in Drive
+                    UI).
+                  </p>
                 </div>
               </div>
 
@@ -1123,7 +1276,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Phone Number *</label>
-              <input type="text" id="order-form-phone" class="form-control" required placeholder="e.g. (647) 555-1234">
+              <input type="text" id="order-form-phone" class="form-control" placeholder="e.g. (647) 555-1234">
             </div>
           </div>
 
@@ -1145,22 +1298,6 @@
               <input type="datetime-local" id="order-form-pickup" class="form-control" required>
             </div>
             <div class="form-group">
-              <label class="form-label">Total Amount ($) *</label>
-              <input type="number" step="0.01" min="0" id="order-form-amount" class="form-control" required
-                placeholder="0.00">
-            </div>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-group">
-              <label class="form-label">Payment Status</label>
-              <select id="order-form-payment" class="form-select">
-                <option value="Paid">Paid</option>
-                <option value="Deposit Paid">Deposit Paid</option>
-                <option value="Unpaid">Unpaid</option>
-              </select>
-            </div>
-            <div class="form-group">
               <label class="form-label">Order Status</label>
               <select id="order-form-status" class="form-select">
                 <option value="Confirmed">Confirmed</option>
@@ -1172,11 +1309,59 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Notes</label>
-            <textarea id="order-form-notes" class="form-control" rows="2"
-              placeholder="Dietary restrictions, design references, custom requests..."></textarea>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">Advance ($)</label>
+              <input type="number" step="1" min="0" id="order-form-advance" class="form-control" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Remaining ($)</label>
+              <input type="number" step="1" min="0" id="order-form-remaining" class="form-control" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Total ($) *</label>
+              <input type="number" step="1" min="0" id="order-form-total" class="form-control" required placeholder="0">
+            </div>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Payment Received</label>
+            <div class="payment-checkbox-group" id="order-form-payment">
+              <label class="payment-checkbox-item"><input type="checkbox" value="Deposit paid-Interac"> Deposit paid -
+                Interac</label>
+              <label class="payment-checkbox-item"><input type="checkbox" value="Deposit paid-Cash"> Deposit paid -
+                Cash</label>
+              <label class="payment-checkbox-item"><input type="checkbox" value="Remaining paid-Interac"> Remaining paid
+                - Interac</label>
+              <label class="payment-checkbox-item"><input type="checkbox" value="Remaining paid-Cash"> Remaining paid -
+                Cash</label>
+              <label class="payment-checkbox-item"><input type="checkbox" value="Total paid-Interac"> Total paid -
+                Interac</label>
+              <label class="payment-checkbox-item"><input type="checkbox" value="Total paid-Cash"> Total paid -
+                Cash</label>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Platform</label>
+              <select id="order-form-platform" class="form-select">
+                <option value="">-- Select Platform --</option>
+                <option value="Marketplace-HOS">Marketplace - HOS</option>
+                <option value="Marketplace-Arzu">Marketplace - Arzu</option>
+                <option value="Facebook-HOS">Facebook - HOS</option>
+                <option value="Facebook-Arzu">Facebook - Arzu</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Whatsapp">Whatsapp</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Notes</label>
+              <textarea id="order-form-notes" class="form-control" rows="2"
+                placeholder="Dietary restrictions, design references, custom requests..."></textarea>
+            </div>
+          </div>
+
         </div>
 
         <div class="modal-footer">
@@ -1204,7 +1389,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Category *</label>
-              <select id="expense-form-category" class="form-select" required>
+              <select id="expense-form-category" class="form-select">
                 <!-- Filled dynamically by JS -->
               </select>
             </div>
@@ -1212,7 +1397,7 @@
 
           <div class="form-group">
             <label class="form-label">Expense Item *</label>
-            <input type="text" id="expense-form-item" class="form-control" required
+            <input type="text" id="expense-form-item" class="form-control"
               placeholder="e.g. Butter (10kg), Electricity Bill">
           </div>
 
@@ -1265,7 +1450,7 @@
 
           <div class="form-group">
             <label class="form-label">Phone Number *</label>
-            <input type="text" id="customer-form-phone" class="form-control" required placeholder="e.g. (647) 555-9988">
+            <input type="text" id="customer-form-phone" class="form-control" placeholder="e.g. (647) 555-9988">
           </div>
 
           <div class="form-group">
@@ -1374,6 +1559,135 @@
           </ul>
         </div>
       </div>
+    </div>
+  </div>
+  <!-- Recipe Modal (New / Edit Product Recipe) -->
+  <div class="modal-overlay" id="recipeModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="recipeModalTitle">New Product Recipe</h3>
+        <button class="btn-close" id="btn-recipe-modal-close"><i data-lucide="x"></i></button>
+      </div>
+      <form id="recipeForm">
+        <input type="hidden" id="recipe-form-id">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Product / Recipe Name *</label>
+            <input type="text" id="recipe-form-name" class="form-control" required placeholder="e.g. Mango Tresleches">
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label class="form-label">Selling Price ($) *</label>
+              <input type="number" step="0.01" min="0" id="recipe-form-price" class="form-control" required
+                placeholder="45.00">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Batch / Yield Size</label>
+              <input type="text" id="recipe-form-yield" class="form-control" placeholder="e.g. 1/2 Kg or 12 Pcs">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-recipe-modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Recipe</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== CSV / EXCEL IMPORT MODAL ==================== -->
+  <div class="modal-overlay" id="importModal">
+    <div class="modal-box modal-box-lg">
+      <div class="modal-header">
+        <h3 id="importModalTitle">Import Data</h3>
+        <button class="btn-close" id="btn-import-modal-close"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- STEP 1: Upload -->
+      <div class="import-step" id="import-step-1">
+        <div class="modal-body">
+          <p class="import-step-label"><span class="step-badge">Step 1</span> Upload your CSV or Excel file</p>
+
+          <div class="import-dropzone" id="import-dropzone">
+            <div class="import-dropzone-inner">
+              <i data-lucide="file-spreadsheet" class="import-dz-icon"></i>
+              <p class="import-dz-title">Drag & drop your file here</p>
+              <p class="import-dz-sub">Supports <strong>.xlsx</strong>, <strong>.xls</strong>, and <strong>.csv</strong>
+              </p>
+              <label class="btn btn-primary import-browse-btn" for="import-file-input">
+                <i data-lucide="folder-open"></i> Browse File
+              </label>
+              <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" style="display:none;">
+            </div>
+          </div>
+
+          <div class="import-file-info" id="import-file-info" style="display:none;">
+            <i data-lucide="file-check"></i>
+            <span id="import-file-name">file.xlsx</span>
+            <span id="import-file-rows" class="import-file-rows-badge">0 rows</span>
+            <button class="btn-close import-file-clear" id="btn-import-file-clear"><i data-lucide="x"></i></button>
+          </div>
+
+          <div class="import-type-selector">
+            <label class="form-label">Importing data as:</label>
+            <div class="import-type-toggle">
+              <button class="import-type-btn active" id="import-type-orders" data-type="orders">Orders</button>
+              <button class="import-type-btn" id="import-type-expenses" data-type="expenses">Expenses</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-import-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btn-import-next" disabled>
+            Next: Map Columns <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Column Mapping -->
+      <div class="import-step" id="import-step-2" style="display:none;">
+        <div class="modal-body">
+          <p class="import-step-label"><span class="step-badge">Step 2</span> Match your file's columns to the app
+            fields</p>
+          <p class="import-mapping-hint">We've auto-matched what we can. Please verify and fix any mismatches.</p>
+
+          <div class="import-mapping-grid" id="import-mapping-grid">
+            <!-- Filled by JS -->
+          </div>
+
+          <div class="import-preview-section">
+            <h4 class="import-preview-title">Preview <span id="import-preview-count">(first 3 rows)</span></h4>
+            <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+              <table class="data-table" id="import-preview-table">
+                <thead id="import-preview-thead"></thead>
+                <tbody id="import-preview-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-import-back">← Back</button>
+          <button type="button" class="btn btn-primary" id="btn-import-confirm">
+            <i data-lucide="check"></i> Import Data
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 3: Done -->
+      <div class="import-step" id="import-step-3" style="display:none;">
+        <div class="modal-body import-done-body">
+          <div class="import-done-icon">
+            <i data-lucide="check-circle"></i>
+          </div>
+          <h3 id="import-done-title">Import Successful!</h3>
+          <p id="import-done-message">0 records were imported.</p>
+          <div class="import-done-stats" id="import-done-stats"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btn-import-done">Done</button>
+        </div>
+      </div>
+
     </div>
   </div>
 

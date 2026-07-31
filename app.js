@@ -12,6 +12,9 @@ const app = {
   inventory: [],
   expenseCategories: [],
   inventoryCategories: [],
+  recipes: [],
+  activeRecipeId: null,
+  isEditRecipeMode: false,
   settings: {},
 
   // UI Navigation & Filters
@@ -19,8 +22,8 @@ const app = {
   currentDate: new Date(2025, 6, 31), // Seed base date: July 31, 2025
   calendarDate: new Date(2025, 7, 1), // Calendar start: August 2025
 
-  // Dashboard Period Filter ('today', 'week', 'month', 'year')
-  dashboardPeriod: 'today',
+  // Dashboard Period Filter ('all', 'today', 'week', 'month', 'year')
+  dashboardPeriod: 'all',
 
   // Dashboard Mini-Calendar Date selectors
   miniCalDate: new Date(2025, 6, 1), // July 2025
@@ -51,6 +54,9 @@ const app = {
     if (this.orders.length === 0) {
       this.seedDatabase();
     }
+    if (!this.recipes || this.recipes.length === 0) {
+      this.seedRecipesData();
+    }
 
     this.setupEventListeners();
     this.switchTab('dashboard');
@@ -70,6 +76,7 @@ const app = {
       this.inventory = JSON.parse(localStorage.getItem('hos_inventory')) || [];
       this.expenseCategories = JSON.parse(localStorage.getItem('hos_expense_categories')) || [];
       this.inventoryCategories = JSON.parse(localStorage.getItem('hos_inventory_categories')) || [];
+      this.recipes = JSON.parse(localStorage.getItem('hos_recipes')) || [];
       this.settings = JSON.parse(localStorage.getItem('hos_settings')) || {};
 
       const theme = localStorage.getItem('hos_theme') || 'light';
@@ -88,6 +95,7 @@ const app = {
       localStorage.setItem('hos_inventory', JSON.stringify(this.inventory));
       localStorage.setItem('hos_expense_categories', JSON.stringify(this.expenseCategories));
       localStorage.setItem('hos_inventory_categories', JSON.stringify(this.inventoryCategories));
+      localStorage.setItem('hos_recipes', JSON.stringify(this.recipes));
       localStorage.setItem('hos_settings', JSON.stringify(this.settings));
     } catch (e) {
       console.error("Error saving localStorage state:", e);
@@ -243,6 +251,7 @@ const app = {
         if (data.inventory) this.inventory = data.inventory;
         if (data.expenseCategories) this.expenseCategories = data.expenseCategories;
         if (data.inventoryCategories) this.inventoryCategories = data.inventoryCategories;
+        if (data.recipes) this.recipes = data.recipes;
         if (data.settings) this.settings = data.settings;
 
         // Update localStorage cache & refresh UI
@@ -286,6 +295,7 @@ const app = {
         inventory: this.inventory,
         expenseCategories: this.expenseCategories,
         inventoryCategories: this.inventoryCategories,
+        recipes: this.recipes,
         settings: this.settings,
         lastSaved: new Date().toISOString()
       });
@@ -386,8 +396,9 @@ const app = {
         customerEmail: 'sarah@gmail.com',
         items: 'Floral Cupcakes (12) - Vanilla',
         pickupDate: '2025-07-31T12:00',
-        amount: 65.00,
-        paymentStatus: 'Paid',
+        advance: 30, remaining: 35, total: 65,
+        payments: ['Deposit paid-Interac', 'Total paid-Interac'],
+        platform: 'Instagram',
         orderStatus: 'Ready',
         notes: 'Vanilla flavor, light pink icing.'
       },
@@ -398,8 +409,9 @@ const app = {
         customerEmail: 'emily@gmail.com',
         items: 'Birthday Cake (2.5kg) - Chocolate',
         pickupDate: '2025-07-31T15:00',
-        amount: 120.00,
-        paymentStatus: 'Deposit Paid',
+        advance: 60, remaining: 60, total: 120,
+        payments: ['Deposit paid-Cash'],
+        platform: 'Facebook-HOS',
         orderStatus: 'In Progress',
         notes: 'Write "Happy 10th Birthday Chloe!" on top.'
       },
@@ -410,8 +422,9 @@ const app = {
         customerEmail: 'michael@gmail.com',
         items: 'Cookies (24 pcs) - Chocolate Chip',
         pickupDate: '2025-07-31T16:00',
-        amount: 40.00,
-        paymentStatus: 'Paid',
+        advance: 40, remaining: 0, total: 40,
+        payments: ['Total paid-Cash'],
+        platform: 'Whatsapp',
         orderStatus: 'Confirmed',
         notes: 'Wrap in luxury ribbons.'
       },
@@ -422,8 +435,9 @@ const app = {
         customerEmail: 'priya@gmail.com',
         items: 'Floral Cupcake Bouquet - Pink Theme',
         pickupDate: '2025-08-01T11:00',
-        amount: 75.00,
-        paymentStatus: 'Deposit Paid',
+        advance: 35, remaining: 40, total: 75,
+        payments: ['Deposit paid-Interac'],
+        platform: 'Marketplace-HOS',
         orderStatus: 'Confirmed',
         notes: 'Bouquet arrangement of cupcakes.'
       },
@@ -434,26 +448,29 @@ const app = {
         customerEmail: 'david@gmail.com',
         items: 'Brownies (16 pcs) - Fudgy',
         pickupDate: '2025-08-01T14:00',
-        amount: 45.00,
-        paymentStatus: 'Unpaid',
+        advance: 0, remaining: 45, total: 45,
+        payments: [],
+        platform: 'Marketplace-Arzu',
         orderStatus: 'Inquiry',
         notes: 'Inquiry only, draft order.'
       },
       // Added older completed orders to bootstrap reports stats
-      { id: 'HB-2025-060', customerName: 'Sarah Johnson', customerPhone: '(416) 555-1234', customerEmail: 'sarah@gmail.com', items: 'Custom Cupcakes x6', pickupDate: '2025-07-28T10:00', amount: 50.00, paymentStatus: 'Paid', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-061', customerName: 'Emily Davis', customerPhone: '(647) 555-5678', customerEmail: 'emily@gmail.com', items: 'Red Velvet Cake', pickupDate: '2025-07-25T11:00', amount: 90.00, paymentStatus: 'Paid', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-062', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Rose Cupcakes x12', pickupDate: '2025-07-24T12:00', amount: 80.00, paymentStatus: 'Paid', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-063', customerName: 'Michael Lee', customerPhone: '(647) 555-9012', customerEmail: 'michael@gmail.com', items: 'Chocolate Brownies x12', pickupDate: '2025-07-23T14:00', amount: 35.00, paymentStatus: 'Paid', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-064', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Birthday Cake 1.5kg', pickupDate: '2025-07-20T10:00', amount: 75.00, paymentStatus: 'Paid', orderStatus: 'Completed', notes: '' }
+      { id: 'HB-2025-060', customerName: 'Sarah Johnson', customerPhone: '(416) 555-1234', customerEmail: 'sarah@gmail.com', items: 'Custom Cupcakes x6', pickupDate: '2025-07-28T10:00', advance: 50, remaining: 0, total: 50, payments: ['Total paid-Cash'], platform: 'Instagram', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2025-061', customerName: 'Emily Davis', customerPhone: '(647) 555-5678', customerEmail: 'emily@gmail.com', items: 'Red Velvet Cake', pickupDate: '2025-07-25T11:00', advance: 90, remaining: 0, total: 90, payments: ['Total paid-Interac'], platform: 'Facebook-HOS', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2025-062', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Rose Cupcakes x12', pickupDate: '2025-07-24T12:00', advance: 80, remaining: 0, total: 80, payments: ['Total paid-Interac'], platform: 'Marketplace-HOS', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2025-063', customerName: 'Michael Lee', customerPhone: '(647) 555-9012', customerEmail: 'michael@gmail.com', items: 'Chocolate Brownies x12', pickupDate: '2025-07-23T14:00', advance: 35, remaining: 0, total: 35, payments: ['Total paid-Cash'], platform: 'Whatsapp', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2025-064', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Birthday Cake 1.5kg', pickupDate: '2025-07-20T10:00', advance: 75, remaining: 0, total: 75, payments: ['Total paid-Cash'], platform: 'Facebook-Arzu', orderStatus: 'Completed', notes: '' }
     ];
 
     // Seed more orders for calendar/reporting (adding up to 28 total orders as in donut chart)
+    const platforms = ['Instagram', 'Facebook-HOS', 'Whatsapp', 'Marketplace-HOS', 'Marketplace-Arzu', 'Facebook-Arzu'];
     for (let i = 1; i <= 18; i++) {
       const customersList = this.customers;
       const cust = customersList[Math.floor(Math.random() * customersList.length)];
-      const amount = [35.00, 45.00, 75.00, 90.00, 110.00, 150.00][Math.floor(Math.random() * 6)];
+      const total = [35, 45, 75, 90, 110, 150][Math.floor(Math.random() * 6)];
+      const advance = Math.floor(total / 2);
       const status = ['Completed', 'Completed', 'Completed', 'Confirmed', 'In Progress', 'Ready'][Math.floor(Math.random() * 6)];
-      const payStatus = status === 'Completed' ? 'Paid' : (Math.random() > 0.5 ? 'Deposit Paid' : 'Unpaid');
+      const pmts = status === 'Completed' ? ['Total paid-Cash'] : (Math.random() > 0.5 ? ['Deposit paid-Interac'] : []);
 
       // Random dates in July 2025
       const day = Math.floor(Math.random() * 28) + 1;
@@ -466,8 +483,11 @@ const app = {
         customerEmail: cust.email,
         items: 'Assorted Bakery Products',
         pickupDate: dateStr,
-        amount: amount,
-        paymentStatus: payStatus,
+        advance: advance,
+        remaining: total - advance,
+        total: total,
+        payments: pmts,
+        platform: platforms[Math.floor(Math.random() * platforms.length)],
         orderStatus: status,
         notes: 'Generated seed order.'
       });
@@ -701,6 +721,7 @@ const app = {
     document.getElementById('expenseForm').addEventListener('submit', (e) => this.handleExpenseSubmit(e));
     document.getElementById('customerForm').addEventListener('submit', (e) => this.handleCustomerSubmit(e));
     document.getElementById('inventoryForm').addEventListener('submit', (e) => this.handleInventorySubmit(e));
+    document.getElementById('recipeForm').addEventListener('submit', (e) => this.handleRecipeSubmit(e));
     document.getElementById('addExpenseCategoryForm').addEventListener('submit', (e) => this.handleAddExpenseCat(e));
     document.getElementById('addInventoryCategoryForm').addEventListener('submit', (e) => this.handleAddInventoryCat(e));
     document.getElementById('business-info-form').addEventListener('submit', (e) => this.handleBusinessInfoSubmit(e));
@@ -755,12 +776,48 @@ const app = {
     document.getElementById('btn-customer-modal-cancel').addEventListener('click', () => this.closeModal('customerModal'));
     document.getElementById('btn-inventory-modal-close').addEventListener('click', () => this.closeModal('inventoryModal'));
     document.getElementById('btn-inventory-modal-cancel').addEventListener('click', () => this.closeModal('inventoryModal'));
+    document.getElementById('btn-recipe-modal-close').addEventListener('click', () => this.closeModal('recipeModal'));
+    document.getElementById('btn-recipe-modal-cancel').addEventListener('click', () => this.closeModal('recipeModal'));
     document.getElementById('btn-expense-cat-close').addEventListener('click', () => this.closeModal('expenseCategoriesModal'));
     document.getElementById('btn-inventory-cat-close').addEventListener('click', () => this.closeModal('inventoryCategoriesModal'));
+
+    // Rows-per-page selectors
+    document.getElementById('orders-rows-select').addEventListener('change', (e) => {
+      this.pagination.orders.limit = parseInt(e.target.value);
+      this.pagination.orders.current = 1;
+      this.renderOrdersTable();
+    });
+    document.getElementById('expenses-rows-select').addEventListener('change', (e) => {
+      this.pagination.expenses.limit = parseInt(e.target.value);
+      this.pagination.expenses.current = 1;
+      this.renderExpensesTable();
+    });
+    document.getElementById('customers-rows-select').addEventListener('change', (e) => {
+      this.pagination.customers.limit = parseInt(e.target.value);
+      this.pagination.customers.current = 1;
+      this.renderCustomersTable();
+    });
+    document.getElementById('inventory-rows-select').addEventListener('change', (e) => {
+      this.pagination.inventory.limit = parseInt(e.target.value);
+      this.pagination.inventory.current = 1;
+      this.renderInventoryTable();
+    });
+    document.getElementById('payments-rows-select').addEventListener('change', (e) => {
+      this.pagination.payments.limit = parseInt(e.target.value);
+      this.pagination.payments.current = 1;
+      this.renderPaymentsTable();
+    });
 
     // Calendar Navigation clicks
     document.getElementById('btn-calendar-prev').addEventListener('click', () => this.calendarPrevMonth());
     document.getElementById('btn-calendar-next').addEventListener('click', () => this.calendarNextMonth());
+
+    // Import Triggers
+    document.getElementById('btn-import-orders-trigger').addEventListener('click', () => this.openImportModal('orders'));
+    document.getElementById('btn-import-expenses-trigger').addEventListener('click', () => this.openImportModal('expenses'));
+
+    // Import Modal Event Listeners
+    this.setupImportModalListeners();
   },
 
   // Switch Tab Panels
@@ -818,6 +875,8 @@ const app = {
     } else if (tabName === 'inventory') {
       this.populateCategoryDropdowns();
       this.renderInventoryTable();
+    } else if (tabName === 'recipes') {
+      this.renderRecipesWorkspace();
     } else if (tabName === 'payments') {
       this.renderPaymentsTable();
     } else if (tabName === 'reports') {
@@ -843,7 +902,7 @@ const app = {
   updateGlobalHeader() {
     // Current Header Date text
     const opt = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
-    document.getElementById('current-header-date').textContent = this.currentDate.toLocaleDateString('en-US', opt);
+    document.getElementById('current-header-date').textContent = new Date().toLocaleDateString('en-US', opt);
   },
 
   // ----------------------------------------------------
@@ -871,7 +930,7 @@ const app = {
 
   calculateDashboardMetrics() {
     const period = this.dashboardPeriod;
-    const filterText = period.toUpperCase();
+    const filterText = period === 'all' ? 'ALL TIME' : period.toUpperCase();
 
     // Update metric card labels
     document.getElementById('lbl-metric-orders').textContent = `${filterText}'S ORDERS`;
@@ -887,8 +946,8 @@ const app = {
     const ordersCount = orders.length;
     document.getElementById('today-orders-val').textContent = ordersCount;
 
-    // Sales Sum
-    const salesTotal = orders.reduce((sum, o) => sum + o.amount, 0);
+    // Sales Sum — use total field, fall back to legacy amount
+    const salesTotal = orders.reduce((sum, o) => sum + (o.total ?? o.amount ?? 0), 0);
     document.getElementById('today-sales-val').textContent = `$${salesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     // Expenses Sum
@@ -910,57 +969,101 @@ const app = {
     const pendingOrdersCount = this.orders.filter(o => o.orderStatus === 'Confirmed' || o.orderStatus === 'In Progress' || o.orderStatus === 'Ready').length;
     document.getElementById('pending-orders-val').textContent = pendingOrdersCount;
 
-    // Payments Due (Point-in-time metrics, not matching period)
+    // Payments Due — sum of remaining field for non-cancelled orders with unpaid balance
     const dueAmount = this.orders
-      .filter(o => (o.paymentStatus === 'Unpaid' || o.paymentStatus === 'Deposit Paid') && o.orderStatus !== 'Cancelled')
+      .filter(o => o.orderStatus !== 'Cancelled')
       .reduce((sum, o) => {
-        const remaining = o.paymentStatus === 'Deposit Paid' ? o.amount / 2 : o.amount;
-        return sum + remaining;
+        const rem = o.remaining ?? 0;
+        return sum + rem;
       }, 0);
 
     document.getElementById('payments-due-val').textContent = `$${dueAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   },
 
-  // Helper: filter orders by period surrounding July 31, 2025
+  // Helper: filter orders by period dynamically
   getOrdersInPeriod(period) {
-    const todayStr = '2025-07-31';
-
-    if (period === 'today') {
-      return this.orders.filter(o => o.pickupDate.startsWith(todayStr) && o.orderStatus !== 'Cancelled');
-    } else if (period === 'week') {
-      // Week of July 28 - Aug 3, 2025
-      return this.orders.filter(o => o.pickupDate >= '2025-07-28T00:00' && o.pickupDate <= '2025-08-03T23:59' && o.orderStatus !== 'Cancelled');
-    } else if (period === 'month') {
-      // July 2025
-      return this.orders.filter(o => o.pickupDate.startsWith('2025-07') && o.orderStatus !== 'Cancelled');
-    } else if (period === 'year') {
-      // 2025
-      return this.orders.filter(o => o.pickupDate.startsWith('2025') && o.orderStatus !== 'Cancelled');
+    if (!period || period === 'all') {
+      return this.orders.filter(o => o.orderStatus !== 'Cancelled');
     }
-    return [];
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const dayOfWeek = now.getDay();
+    const distToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + distToMon);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+
+    const monStr = mon.toISOString().slice(0, 10);
+    const sunStr = sun.toISOString().slice(0, 10);
+
+    const monthStr = now.toISOString().slice(0, 7);
+    const yearStr = now.getFullYear().toString();
+
+    return this.orders.filter(o => {
+      if (o.orderStatus === 'Cancelled') return false;
+      const dStr = (o.pickupDate || '').slice(0, 10);
+      if (!dStr) return true;
+
+      if (period === 'today') {
+        return dStr === todayStr || dStr === '2025-07-31';
+      } else if (period === 'week') {
+        return (dStr >= monStr && dStr <= sunStr) || (dStr >= '2025-07-28' && dStr <= '2025-08-03');
+      } else if (period === 'month') {
+        return dStr.startsWith(monthStr) || dStr.startsWith('2025-07');
+      } else if (period === 'year') {
+        return dStr.startsWith(yearStr) || dStr.startsWith('2025');
+      }
+      return true;
+    });
   },
 
-  // Helper: filter expenses by period surrounding July 31, 2025
+  // Helper: filter expenses by period dynamically
   getExpensesInPeriod(period) {
-    const todayStr = '2025-07-31';
-
-    if (period === 'today') {
-      return this.expenses.filter(e => e.date === todayStr);
-    } else if (period === 'week') {
-      return this.expenses.filter(e => e.date >= '2025-07-28' && e.date <= '2025-08-03');
-    } else if (period === 'month') {
-      return this.expenses.filter(e => e.date.startsWith('2025-07'));
-    } else if (period === 'year') {
-      return this.expenses.filter(e => e.date.startsWith('2025'));
+    if (!period || period === 'all') {
+      return this.expenses;
     }
-    return [];
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const dayOfWeek = now.getDay();
+    const distToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + distToMon);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+
+    const monStr = mon.toISOString().slice(0, 10);
+    const sunStr = sun.toISOString().slice(0, 10);
+
+    const monthStr = now.toISOString().slice(0, 7);
+    const yearStr = now.getFullYear().toString();
+
+    return this.expenses.filter(e => {
+      const dStr = (e.date || '').slice(0, 10);
+      if (!dStr) return true;
+
+      if (period === 'today') {
+        return dStr === todayStr || dStr === '2025-07-31';
+      } else if (period === 'week') {
+        return (dStr >= monStr && dStr <= sunStr) || (dStr >= '2025-07-28' && dStr <= '2025-08-03');
+      } else if (period === 'month') {
+        return dStr.startsWith(monthStr) || dStr.startsWith('2025-07');
+      } else if (period === 'year') {
+        return dStr.startsWith(yearStr) || dStr.startsWith('2025');
+      }
+      return true;
+    });
   },
 
   // 1. Dashboard Orders Table
   renderDashboardOrdersTable() {
     const tableTitle = document.getElementById('dashboard-orders-table-title');
     const period = this.dashboardPeriod;
-    const periodLabel = period === 'today' ? "Today" : (period === 'week' ? "This Week" : (period === 'month' ? "This Month" : "This Year"));
+    const periodLabel = period === 'today' ? "Today" : (period === 'week' ? "This Week" : (period === 'month' ? "This Month" : (period === 'year' ? "This Year" : "All Time")));
     tableTitle.textContent = `${periodLabel}'s Orders`;
 
     const orders = this.getOrdersInPeriod(period).sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
@@ -975,6 +1078,9 @@ const app = {
     orders.slice(0, 5).forEach(o => {
       const initials = o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
       const timeStr = new Date(o.pickupDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
+      const pymtDisplay = pymtList.length ? pymtList.map(p => `<span class="badge badge-info" style="font-size:0.58rem; padding:1px 5px; margin:1px;">${p}</span>`).join('') : '<span class="badge badge-danger" style="font-size:0.58rem; padding:1px 5px;">Unpaid</span>';
+      const platformDisplay = o.platform ? `<span style="font-size:0.7rem; color:var(--color-text-muted);">${o.platform}</span>` : '-';
 
       const trHtml = `
         <tr>
@@ -990,9 +1096,12 @@ const app = {
           </td>
           <td style="font-size:0.8rem; max-width: 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${o.items}</td>
           <td style="font-size:0.8rem;">${timeStr}</td>
-          <td style="font-weight: 600; font-size:0.8rem;">$${o.amount.toFixed(2)}</td>
+          <td style="font-weight:600; font-size:0.8rem;">$${(o.advance ?? 0)}</td>
+          <td style="font-size:0.8rem;">$${(o.remaining ?? 0)}</td>
+          <td style="font-weight:600; font-size:0.8rem;">$${(o.total ?? o.amount ?? 0)}</td>
           <td><span class="badge badge-${this.getStatusBadgeType(o.orderStatus)}" style="font-size:0.65rem; padding: 2px 8px;">${o.orderStatus}</span></td>
-          <td><span class="badge badge-${this.getPaymentBadgeType(o.paymentStatus)}" style="font-size:0.65rem; padding: 2px 8px;">${o.paymentStatus}</span></td>
+          <td>${pymtDisplay}</td>
+          <td>${platformDisplay}</td>
           <td style="text-align: center;">
             <button class="btn-action-trigger" onclick="app.editOrder('${o.id}')" title="Edit" style="padding:2px;">
               <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
@@ -1177,21 +1286,47 @@ const app = {
 
     let labels = [];
     let salesData = [];
-    let headerTotal = 0;
+
+    const activeOrders = this.orders.filter(o => o.orderStatus !== 'Cancelled');
 
     if (period === 'week') {
       labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      salesData = [650.00, 480.00, 750.00, 1245.00, 890.00, 450.00, 185.00];
-      headerTotal = salesData.reduce((a, b) => a + b, 0);
+      salesData = [0, 0, 0, 0, 0, 0, 0];
+      const orders = this.getOrdersInPeriod('week');
+      orders.forEach(o => {
+        const d = new Date(o.pickupDate);
+        if (!isNaN(d.getTime())) {
+          let dayIdx = d.getDay() - 1;
+          if (dayIdx < 0) dayIdx = 6;
+          salesData[dayIdx] += (o.total ?? o.amount ?? 0);
+        }
+      });
     } else if (period === 'month') {
       labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      salesData = [1850.00, 2450.00, 3100.00, 5050.00];
-      headerTotal = salesData.reduce((a, b) => a + b, 0);
+      salesData = [0, 0, 0, 0];
+      const orders = this.getOrdersInPeriod('month');
+      orders.forEach(o => {
+        const d = new Date(o.pickupDate);
+        if (!isNaN(d.getTime())) {
+          const dateNum = d.getDate();
+          const wkIdx = Math.min(3, Math.floor((dateNum - 1) / 7));
+          salesData[wkIdx] += (o.total ?? o.amount ?? 0);
+        }
+      });
     } else if (period === 'year') {
       labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      salesData = [5500, 6200, 7800, 8400, 9100, 11500, 12450, 0, 0, 0, 0, 0];
-      headerTotal = salesData.reduce((a, b) => a + b, 0);
+      salesData = Array(12).fill(0);
+      const orders = this.getOrdersInPeriod('year');
+      orders.forEach(o => {
+        const d = new Date(o.pickupDate);
+        if (!isNaN(d.getTime())) {
+          const mIdx = d.getMonth();
+          salesData[mIdx] += (o.total ?? o.amount ?? 0);
+        }
+      });
     }
+
+    const headerTotal = salesData.reduce((a, b) => a + b, 0);
 
     document.getElementById('week-sales-total').textContent = `$${headerTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
@@ -1416,6 +1551,9 @@ const app = {
       const dateOpt = { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
       const pickupFormatted = new Date(o.pickupDate).toLocaleDateString('en-US', dateOpt);
       const initials = o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
+      const pymtDisplay = pymtList.length ? pymtList.map(p => `<span class="badge badge-info" style="font-size:0.7rem; margin:1px;">${p}</span>`).join('') : '<span class="badge badge-danger">Unpaid</span>';
+      const platformDisplay = o.platform || '-';
 
       const trHtml = `
         <tr>
@@ -1431,8 +1569,11 @@ const app = {
           </td>
           <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${o.items}</td>
           <td>${pickupFormatted}</td>
-          <td style="font-weight: 600;">$${o.amount.toFixed(2)}</td>
-          <td><span class="badge badge-${this.getPaymentBadgeType(o.paymentStatus)}">${o.paymentStatus}</span></td>
+          <td style="font-weight:600;">$${(o.advance ?? 0)}</td>
+          <td>$${(o.remaining ?? 0)}</td>
+          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0)}</td>
+          <td>${pymtDisplay}</td>
+          <td><span style="font-size:0.8rem;">${platformDisplay}</span></td>
           <td><span class="badge badge-${this.getStatusBadgeType(o.orderStatus)}">${o.orderStatus}</span></td>
           <td style="text-align: center;">
             <button class="btn-action-trigger" onclick="app.editOrder('${o.id}')" title="Edit Order">
@@ -1825,14 +1966,18 @@ const app = {
     paginated.forEach(o => {
       const dateOpt = { month: 'short', day: 'numeric', year: 'numeric' };
       const dateStr = new Date(o.pickupDate).toLocaleDateString('en-US', dateOpt);
+      const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
+      const pymtDisplay = pymtList.length ? pymtList.map(p => `<span class="badge badge-info" style="font-size:0.75rem; margin:1px;">${p}</span>`).join('') : '<span class="badge badge-danger">Unpaid</span>';
 
       const trHtml = `
         <tr>
           <td><span class="order-id-txt">${o.id}</span></td>
           <td style="font-weight:600;">${o.customerName}</td>
           <td>${dateStr}</td>
-          <td style="font-weight:600;">$${o.amount.toFixed(2)}</td>
-          <td><span class="badge badge-${this.getPaymentBadgeType(o.paymentStatus)}">${o.paymentStatus}</span></td>
+          <td style="font-weight:600;">$${(o.advance ?? 0)}</td>
+          <td>$${(o.remaining ?? 0)}</td>
+          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0)}</td>
+          <td>${pymtDisplay}</td>
           <td style="max-width: 250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.8rem; color:var(--color-text-muted);">${o.notes || '-'}</td>
         </tr>
       `;
@@ -2127,11 +2272,25 @@ const app = {
   renderPaginationControls(type, totalPages) {
     const container = document.getElementById(`${type}-pagination-controls`);
     container.innerHTML = '';
+    if (totalPages <= 1) return;
 
+    const current = this.pagination[type].current;
+    const WINDOW = 5; // max page buttons visible at once
+
+    // Calculate the sliding window of pages to show
+    let startPage = Math.max(1, current - Math.floor(WINDOW / 2));
+    let endPage = startPage + WINDOW - 1;
+    if (endPage > totalPages) {
+      endPage = totalPages;
+      startPage = Math.max(1, endPage - WINDOW + 1);
+    }
+
+    // Prev arrow
     const prevBtn = document.createElement('button');
-    prevBtn.className = `btn-icon btn-sm ${this.pagination[type].current === 1 ? 'disabled' : ''}`;
-    prevBtn.innerHTML = `<i data-lucide="chevron-left" style="width:14px; height:14px;"></i>`;
-    if (this.pagination[type].current > 1) {
+    prevBtn.className = `btn-icon btn-sm${current === 1 ? ' disabled' : ''}`;
+    prevBtn.innerHTML = `<i data-lucide="chevron-left" style="width:14px;height:14px;"></i>`;
+    prevBtn.title = 'Previous page';
+    if (current > 1) {
       prevBtn.addEventListener('click', () => {
         this.pagination[type].current--;
         this.refreshActiveTabTable();
@@ -2139,12 +2298,32 @@ const app = {
     }
     container.appendChild(prevBtn);
 
-    for (let i = 1; i <= totalPages; i++) {
-      const pageBtn = document.createElement('button');
-      pageBtn.className = `btn btn-sm ${this.pagination[type].current === i ? 'active' : 'btn-outline'}`;
-      pageBtn.style.padding = '6px 12px';
-      pageBtn.textContent = i;
+    // First page + ellipsis if window doesn't start at 1
+    if (startPage > 1) {
+      const firstBtn = document.createElement('button');
+      firstBtn.className = 'btn btn-sm btn-outline';
+      firstBtn.style.padding = '5px 10px';
+      firstBtn.textContent = '1';
+      firstBtn.addEventListener('click', () => {
+        this.pagination[type].current = 1;
+        this.refreshActiveTabTable();
+      });
+      container.appendChild(firstBtn);
 
+      if (startPage > 2) {
+        const dots = document.createElement('span');
+        dots.className = 'pagination-ellipsis';
+        dots.textContent = '…';
+        container.appendChild(dots);
+      }
+    }
+
+    // Windowed page buttons
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.className = `btn btn-sm ${current === i ? 'active' : 'btn-outline'}`;
+      pageBtn.style.padding = '5px 10px';
+      pageBtn.textContent = i;
       pageBtn.addEventListener('click', () => {
         this.pagination[type].current = i;
         this.refreshActiveTabTable();
@@ -2152,16 +2331,40 @@ const app = {
       container.appendChild(pageBtn);
     }
 
+    // Ellipsis + last page if window doesn't reach the end
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        const dots = document.createElement('span');
+        dots.className = 'pagination-ellipsis';
+        dots.textContent = '…';
+        container.appendChild(dots);
+      }
+
+      const lastBtn = document.createElement('button');
+      lastBtn.className = 'btn btn-sm btn-outline';
+      lastBtn.style.padding = '5px 10px';
+      lastBtn.textContent = totalPages;
+      lastBtn.addEventListener('click', () => {
+        this.pagination[type].current = totalPages;
+        this.refreshActiveTabTable();
+      });
+      container.appendChild(lastBtn);
+    }
+
+    // Next arrow
     const nextBtn = document.createElement('button');
-    nextBtn.className = `btn-icon btn-sm ${this.pagination[type].current === totalPages ? 'disabled' : ''}`;
-    nextBtn.innerHTML = `<i data-lucide="chevron-right" style="width:14px; height:14px;"></i>`;
-    if (this.pagination[type].current < totalPages) {
+    nextBtn.className = `btn-icon btn-sm${current === totalPages ? ' disabled' : ''}`;
+    nextBtn.innerHTML = `<i data-lucide="chevron-right" style="width:14px;height:14px;"></i>`;
+    nextBtn.title = 'Next page';
+    if (current < totalPages) {
       nextBtn.addEventListener('click', () => {
         this.pagination[type].current++;
         this.refreshActiveTabTable();
       });
     }
     container.appendChild(nextBtn);
+
+    lucide.createIcons();
   },
 
   refreshActiveTabTable() {
@@ -2183,7 +2386,9 @@ const app = {
       document.getElementById('orderForm').reset();
       document.getElementById('order-form-id').value = '';
       document.getElementById('orderModalTitle').textContent = 'New Order';
-      document.getElementById('order-form-pickup').value = '2025-07-31T12:00';
+      const now = new Date();
+      const nowISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      document.getElementById('order-form-pickup').value = nowISO;
     } else if (modalId === 'expenseModal') {
       document.getElementById('expenseForm').reset();
       document.getElementById('expense-form-id').value = '';
@@ -2191,7 +2396,7 @@ const app = {
 
       this.populateCategoryDropdowns();
 
-      const todayVal = this.currentDate.toISOString().slice(0, 10);
+      const todayVal = new Date().toISOString().slice(0, 10);
       document.getElementById('expense-form-date').value = todayVal;
     } else if (modalId === 'customerModal') {
       document.getElementById('customerForm').reset();
@@ -2206,6 +2411,10 @@ const app = {
       this.renderExpenseCategoriesManager();
     } else if (modalId === 'inventoryCategoriesModal') {
       this.renderInventoryCategoriesManager();
+    } else if (modalId === 'recipeModal') {
+      document.getElementById('recipeForm').reset();
+      document.getElementById('recipe-form-id').value = '';
+      document.getElementById('recipeModalTitle').textContent = 'New Product Recipe';
     }
 
     lucide.createIcons();
@@ -2260,8 +2469,11 @@ const app = {
     const customerEmail = document.getElementById('order-form-email').value;
     const items = document.getElementById('order-form-items').value;
     const pickupDate = document.getElementById('order-form-pickup').value;
-    const amount = parseFloat(document.getElementById('order-form-amount').value);
-    const paymentStatus = document.getElementById('order-form-payment').value;
+    const advance = parseInt(document.getElementById('order-form-advance').value) || 0;
+    const remaining = parseInt(document.getElementById('order-form-remaining').value) || 0;
+    const total = parseInt(document.getElementById('order-form-total').value) || 0;
+    const payments = Array.from(document.querySelectorAll('#order-form-payment input[type=checkbox]:checked')).map(cb => cb.value);
+    const platform = document.getElementById('order-form-platform').value;
     const orderStatus = document.getElementById('order-form-status').value;
     const notes = document.getElementById('order-form-notes').value;
 
@@ -2269,16 +2481,16 @@ const app = {
     if (id) {
       const idx = this.orders.findIndex(o => o.id === id);
       if (idx !== -1) {
-        this.orders[idx] = { ...this.orders[idx], customerName, customerPhone, customerEmail, items, pickupDate, amount, paymentStatus, orderStatus, notes };
+        this.orders[idx] = { ...this.orders[idx], customerName, customerPhone, customerEmail, items, pickupDate, advance, remaining, total, payments, platform, orderStatus, notes };
         targetOrder = this.orders[idx];
       }
     } else {
       const newId = `HS-2025-0${76 + this.orders.length}`;
-      targetOrder = { id: newId, customerName, customerPhone, customerEmail, items, pickupDate, amount, paymentStatus, orderStatus, notes };
+      targetOrder = { id: newId, customerName, customerPhone, customerEmail, items, pickupDate, advance, remaining, total, payments, platform, orderStatus, notes };
       this.orders.push(targetOrder);
     }
 
-    this.updateCustomerProfile(customerName, customerPhone, customerEmail, amount);
+    this.updateCustomerProfile(customerName, customerPhone, customerEmail, total);
 
     this.saveState();
     if (targetOrder) this.saveToDrive();
@@ -2325,8 +2537,15 @@ const app = {
     document.getElementById('order-form-email').value = order.customerEmail || '';
     document.getElementById('order-form-items').value = order.items;
     document.getElementById('order-form-pickup').value = order.pickupDate;
-    document.getElementById('order-form-amount').value = order.amount;
-    document.getElementById('order-form-payment').value = order.paymentStatus;
+    document.getElementById('order-form-advance').value = order.advance ?? '';
+    document.getElementById('order-form-remaining').value = order.remaining ?? '';
+    document.getElementById('order-form-total').value = order.total ?? order.amount ?? '';
+    // Restore payment checkboxes
+    const pymtList = Array.isArray(order.payments) ? order.payments : (order.paymentStatus ? [order.paymentStatus] : []);
+    document.querySelectorAll('#order-form-payment input[type=checkbox]').forEach(cb => {
+      cb.checked = pymtList.includes(cb.value);
+    });
+    document.getElementById('order-form-platform').value = order.platform || '';
     document.getElementById('order-form-status').value = order.orderStatus;
     document.getElementById('order-form-notes').value = order.notes || '';
 
@@ -2678,13 +2897,1078 @@ const app = {
     }
   },
 
-  getPaymentBadgeType(payment) {
-    switch (payment) {
-      case 'Paid': return 'success';
-      case 'Deposit Paid': return 'info';
-      case 'Unpaid': return 'danger';
-      default: return 'neutral';
+  getPaymentBadgeType(payments) {
+    // Legacy support: accept string or array
+    const list = Array.isArray(payments) ? payments : (payments ? [payments] : []);
+    if (list.length === 0) return 'danger';
+    const last = list[list.length - 1].toLowerCase();
+    if (last.includes('total')) return 'success';
+    if (last.includes('remaining')) return 'warning';
+    if (last.includes('deposit')) return 'info';
+    return 'info';
+  },
+
+  // ----------------------------------------------------
+  // RECIPE COSTING WORKSPACE ENGINE
+  // ----------------------------------------------------
+  seedRecipesData() {
+    this.recipes = [
+      {
+        id: 'REC-1',
+        name: 'Mango Tresleches',
+        salePrice: 45.00,
+        yield: '1/2 Kg',
+        ingredients: [
+          { name: 'Flour (All Purpose)', category: 'Bread', price: 11.99, size: 5000, qty: 50 },
+          { name: 'Corn Starch', category: 'Bread', price: 7.00, size: 1000, qty: 83 },
+          { name: 'Granulated Sugar', category: 'Bread', price: 5.99, size: 4000, qty: 165 },
+          { name: 'Baking Powder', category: 'Bread', price: 3.27, size: 284, qty: 1.5 },
+          { name: 'Baking Soda', category: 'Bread', price: 1.37, size: 454, qty: 1.5 },
+          { name: 'Salt', category: 'Bread', price: 1.68, size: 1000, qty: 1.5 },
+          { name: 'Vanilla Extract', category: 'Bread', price: 3.97, size: 225, qty: 10 },
+          { name: 'Eggs', category: 'Bread', price: 4.64, size: 12, qty: 5 },
+          { name: 'Oil', category: 'Bread', price: 7.97, size: 2840, qty: 35 },
+          { name: 'Icing Sugar', category: 'Frosting', price: 3.77, size: 1000, qty: 50 },
+          { name: 'Vanilla Extract', category: 'Frosting', price: 3.97, size: 225, qty: 5 },
+          { name: 'Whipping Cream', category: 'Frosting', price: 6.28, size: 955, qty: 600 },
+          { name: 'Evaporated Milk', category: 'Frosting', price: 1.78, size: 354, qty: 354 },
+          { name: 'Condensed Milk', category: 'Frosting', price: 2.28, size: 300, qty: 150 },
+          { name: 'Mangoes', category: 'Frosting', price: 4.66, size: 600, qty: 200 },
+          { name: 'Mango Puree', category: 'Frosting', price: 4.47, size: 850, qty: 500 }
+        ],
+        labor: [
+          { task: 'Preparation & Baking', rate: 15, hours: 0 },
+          { task: 'Decorating', rate: 15, hours: 0 }
+        ],
+        packaging: [
+          { item: 'Tresleches Tray', price: 1.50, size: 1, qty: 1 },
+          { item: 'Ribbon', price: 5.00, size: 10, qty: 0 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      },
+      {
+        id: 'REC-2',
+        name: 'Brownie',
+        salePrice: 40.00,
+        yield: '16 Pcs Box',
+        ingredients: [
+          { name: 'Dark Chocolate', category: 'Bread', price: 12.00, size: 1000, qty: 250 },
+          { name: 'Butter', category: 'Bread', price: 6.50, size: 454, qty: 200 },
+          { name: 'Granulated Sugar', category: 'Bread', price: 5.99, size: 4000, qty: 300 },
+          { name: 'Flour (All Purpose)', category: 'Bread', price: 11.99, size: 5000, qty: 120 },
+          { name: 'Cocoa Powder', category: 'Bread', price: 8.50, size: 500, qty: 50 },
+          { name: 'Eggs', category: 'Bread', price: 4.64, size: 12, qty: 4 }
+        ],
+        labor: [
+          { task: 'Baking & Packing', rate: 15, hours: 0.5 }
+        ],
+        packaging: [
+          { item: 'Brownie Box', price: 2.00, size: 1, qty: 1 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      },
+      {
+        id: 'REC-3',
+        name: 'Oreo Dessert Cups',
+        salePrice: 35.00,
+        yield: '6 Cups',
+        ingredients: [
+          { name: 'Oreo Biscuits', category: 'Bread', price: 4.50, size: 500, qty: 300 },
+          { name: 'Whipping Cream', category: 'Frosting', price: 6.28, size: 955, qty: 400 },
+          { name: 'Cream Cheese', category: 'Frosting', price: 5.50, size: 500, qty: 200 },
+          { name: 'Condensed Milk', category: 'Frosting', price: 2.28, size: 300, qty: 100 }
+        ],
+        labor: [],
+        packaging: [
+          { item: 'Dessert Cups (6)', price: 3.00, size: 6, qty: 6 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      },
+      {
+        id: 'REC-4',
+        name: 'Strawberry Dessert Cups',
+        salePrice: 38.00,
+        yield: '6 Cups',
+        ingredients: [
+          { name: 'Strawberries', category: 'Frosting', price: 6.00, size: 500, qty: 300 },
+          { name: 'Whipping Cream', category: 'Frosting', price: 6.28, size: 955, qty: 400 },
+          { name: 'Condensed Milk', category: 'Frosting', price: 2.28, size: 300, qty: 120 }
+        ],
+        labor: [],
+        packaging: [
+          { item: 'Dessert Cups (6)', price: 3.00, size: 6, qty: 6 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      },
+      {
+        id: 'REC-5',
+        name: 'LotusBiscoff Dessert Cups',
+        salePrice: 42.00,
+        yield: '6 Cups',
+        ingredients: [
+          { name: 'Lotus Biscoff Spread', category: 'Frosting', price: 8.50, size: 400, qty: 250 },
+          { name: 'Biscoff Biscuits', category: 'Bread', price: 4.00, size: 250, qty: 150 },
+          { name: 'Whipping Cream', category: 'Frosting', price: 6.28, size: 955, qty: 400 }
+        ],
+        labor: [],
+        packaging: [
+          { item: 'Dessert Cups (6)', price: 3.00, size: 6, qty: 6 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      },
+      {
+        id: 'REC-6',
+        name: 'Rasmalai Tresleches',
+        salePrice: 48.00,
+        yield: '1/2 Kg',
+        ingredients: [
+          { name: 'Flour (All Purpose)', category: 'Bread', price: 11.99, size: 5000, qty: 50 },
+          { name: 'Rasmalai Milk', category: 'Frosting', price: 6.50, size: 500, qty: 350 },
+          { name: 'Whipping Cream', category: 'Frosting', price: 6.28, size: 955, qty: 500 },
+          { name: 'Pistachios & Almonds', category: 'Frosting', price: 10.00, size: 250, qty: 40 }
+        ],
+        labor: [],
+        packaging: [
+          { item: 'Tresleches Tray', price: 1.50, size: 1, qty: 1 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0.50 }
+      }
+    ];
+    if (!this.activeRecipeId && this.recipes.length > 0) {
+      this.activeRecipeId = this.recipes[0].id;
     }
+    this.saveState();
+  },
+
+  renderRecipesWorkspace() {
+    if (!this.recipes || this.recipes.length === 0) {
+      this.seedRecipesData();
+    }
+    if (!this.activeRecipeId && this.recipes.length > 0) {
+      this.activeRecipeId = this.recipes[0].id;
+    }
+
+    this.renderRecipeTabs();
+    this.renderActiveRecipeContent();
+  },
+
+  renderRecipeTabs() {
+    const container = document.getElementById('recipe-tabs-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    this.recipes.forEach(r => {
+      const isActive = r.id === this.activeRecipeId;
+      const btn = document.createElement('button');
+      btn.className = `recipe-tab-btn ${isActive ? 'active' : ''}`;
+      btn.innerHTML = `
+        <span>${r.name}</span>
+        ${r.yield ? `<span class="tab-badge">${r.yield}</span>` : ''}
+      `;
+      btn.addEventListener('click', () => {
+        this.activeRecipeId = r.id;
+        this.isEditRecipeMode = false;
+        this.renderRecipeTabs();
+        this.renderActiveRecipeContent();
+      });
+      container.appendChild(btn);
+    });
+
+    lucide.createIcons();
+
+    // Rebind the static Add Recipe button (lives outside the scrollable list)
+    const addBtn = document.getElementById('recipe-tab-add-btn');
+    if (addBtn) {
+      addBtn.onclick = () => this.openModal('recipeModal');
+    }
+  },
+
+  calculateRecipeTotals(r) {
+    let ingredientsCost = 0;
+    if (r.ingredients && r.ingredients.length) {
+      r.ingredients.forEach(ing => {
+        const price = parseFloat(ing.price) || 0;
+        const size = parseFloat(ing.size) || 1;
+        const qty = parseFloat(ing.qty) || 0;
+        const perUnit = size > 0 ? price / size : 0;
+        ingredientsCost += perUnit * qty;
+      });
+    }
+
+    let laborCost = 0;
+    if (r.labor && r.labor.length) {
+      r.labor.forEach(l => {
+        const rate = parseFloat(l.rate) || 0;
+        const hours = parseFloat(l.hours) || 0;
+        laborCost += rate * hours;
+      });
+    }
+
+    let packagingCost = 0;
+    if (r.packaging && r.packaging.length) {
+      r.packaging.forEach(p => {
+        const price = parseFloat(p.price) || 0;
+        const size = parseFloat(p.size) || 1;
+        const qty = parseFloat(p.qty) || 0;
+        const perUnit = size > 0 ? price / size : 0;
+        packagingCost += perUnit * qty;
+      });
+    }
+
+    let deliveryCost = 0;
+    if (r.delivery) {
+      const miles = parseFloat(r.delivery.miles) || 0;
+      const rate = parseFloat(r.delivery.ratePerMile) || 0;
+      deliveryCost = miles * rate;
+    }
+
+    const grandTotal = ingredientsCost + laborCost + packagingCost + deliveryCost;
+    const salePrice = parseFloat(r.salePrice) || 0;
+    const netProfit = salePrice - grandTotal;
+    const profitMargin = salePrice > 0 ? (netProfit / salePrice) * 100 : 0;
+
+    return {
+      ingredientsCost,
+      laborCost,
+      packagingCost,
+      deliveryCost,
+      grandTotal,
+      salePrice,
+      netProfit,
+      profitMargin
+    };
+  },
+
+  toggleEditRecipeMode() {
+    this.isEditRecipeMode = !this.isEditRecipeMode;
+    this.renderActiveRecipeContent();
+  },
+
+  renderActiveRecipeContent() {
+    const workspace = document.getElementById('recipe-costing-workspace');
+    if (!workspace) return;
+
+    const r = this.recipes.find(rec => rec.id === this.activeRecipeId);
+    if (!r) {
+      workspace.innerHTML = '<div style="padding:40px; text-align:center; color:var(--color-text-muted);">No recipe selected. Select or create a product recipe above.</div>';
+      return;
+    }
+
+    const totals = this.calculateRecipeTotals(r);
+
+    let marginClass = 'margin-high';
+    if (totals.profitMargin < 25) marginClass = 'margin-low';
+    else if (totals.profitMargin < 50) marginClass = 'margin-medium';
+
+    const isEdit = this.isEditRecipeMode;
+
+    workspace.innerHTML = `
+      <div class="recipe-header-bar">
+        <div class="recipe-header-title">
+          <input type="text" class="recipe-name-input" value="${r.name}" onchange="app.updateRecipeHeader('${r.id}', 'name', this.value)" placeholder="Recipe Name">
+          <input type="text" class="costing-input-sm" style="width: 130px; font-weight:600;" value="${r.yield || ''}" onchange="app.updateRecipeHeader('${r.id}', 'yield', this.value)" placeholder="Yield / Size (e.g. 1/2 Kg)">
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button class="btn ${isEdit ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="app.toggleEditRecipeMode()">
+            <i data-lucide="${isEdit ? 'check' : 'edit-3'}" style="width:14px; height:14px;"></i>
+            <span>${isEdit ? 'Done Editing' : 'Edit Recipe'}</span>
+          </button>
+          <button class="btn btn-outline btn-sm text-danger" onclick="app.deleteRecipe('${r.id}')" title="Delete Recipe">
+            <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+            <span>Delete Recipe</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="recipe-editor-grid">
+        <!-- Left Column: Ingredients Table -->
+        <div class="costing-card">
+          <div class="costing-card-header">
+            <div class="costing-card-title">
+              <i data-lucide="shopping-basket"></i>
+              <span>Ingredients & Frosting</span>
+            </div>
+            ${isEdit ? `
+              <button class="btn btn-outline btn-sm" onclick="app.addRecipeIngredient('${r.id}')">
+                <i data-lucide="plus" style="width:12px; height:12px;"></i> Add Item
+              </button>
+            ` : ''}
+          </div>
+
+          <table class="costing-table">
+            <thead>
+              <tr>
+                <th>Ingredient Name</th>
+                <th style="width:75px;">Pack ($)</th>
+                <th style="width:70px;">Pack Size</th>
+                <th style="width:75px;">$/Unit</th>
+                <th style="width:70px;">Qty Used</th>
+                <th style="width:75px;">Cost ($)</th>
+                ${isEdit ? '<th style="width:30px;"></th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${(r.ingredients || []).map((ing, idx) => {
+                const price = parseFloat(ing.price) || 0;
+                const size = parseFloat(ing.size) || 1;
+                const qty = parseFloat(ing.qty) || 0;
+                const perUnit = size > 0 ? price / size : 0;
+                const cost = perUnit * qty;
+                return `
+                  <tr>
+                    <td><input type="text" class="costing-input-sm" value="${ing.name}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'name', this.value)"></td>
+                    <td><input type="number" step="0.01" class="costing-input-sm" value="${ing.price}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'price', this.value)"></td>
+                    <td><input type="number" step="0.01" class="costing-input-sm" value="${ing.size}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'size', this.value)"></td>
+                    <td class="cost-calculated-val">$${perUnit.toFixed(4)}</td>
+                    <td><input type="number" step="0.01" class="costing-input-sm" value="${ing.qty}" onchange="app.updateRecipeIngredient('${r.id}', ${idx}, 'qty', this.value)"></td>
+                    <td class="cost-calculated-val">$${cost.toFixed(2)}</td>
+                    ${isEdit ? `
+                      <td>
+                        <button class="btn-action-trigger text-danger" onclick="app.deleteRecipeIngredient('${r.id}', ${idx})" title="Remove">
+                          <i data-lucide="x" style="width:12px; height:12px;"></i>
+                        </button>
+                      </td>
+                    ` : ''}
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+          <div style="margin-top:12px; text-align:right; font-size:0.88rem; font-weight:700;">
+            Total Ingredients Cost: <span style="color:var(--color-primary); font-size:0.95rem;">$${totals.ingredientsCost.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <!-- Right Column: Labor, Packaging, Delivery & Profit Summary -->
+        <div>
+          <!-- Labor & Prep -->
+          <div class="costing-card">
+            <div class="costing-card-header">
+              <div class="costing-card-title">
+                <i data-lucide="clock"></i>
+                <span>Preparation & Labor</span>
+              </div>
+              ${isEdit ? `
+                <button class="btn btn-outline btn-sm" onclick="app.addRecipeLabor('${r.id}')">
+                  <i data-lucide="plus" style="width:12px; height:12px;"></i> Add Task
+                </button>
+              ` : ''}
+            </div>
+            <table class="costing-table">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th style="width:85px;">Rate/Hr ($)</th>
+                  <th style="width:80px;">Hours</th>
+                  <th style="width:80px;">Cost ($)</th>
+                  ${isEdit ? '<th style="width:30px;"></th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${(r.labor || []).map((l, idx) => {
+                  const rate = parseFloat(l.rate) || 0;
+                  const hours = parseFloat(l.hours) || 0;
+                  const cost = rate * hours;
+                  return `
+                    <tr>
+                      <td><input type="text" class="costing-input-sm" value="${l.task}" onchange="app.updateRecipeLabor('${r.id}', ${idx}, 'task', this.value)"></td>
+                      <td><input type="number" step="0.5" class="costing-input-sm" value="${l.rate}" onchange="app.updateRecipeLabor('${r.id}', ${idx}, 'rate', this.value)"></td>
+                      <td><input type="number" step="0.1" class="costing-input-sm" value="${l.hours}" onchange="app.updateRecipeLabor('${r.id}', ${idx}, 'hours', this.value)"></td>
+                      <td class="cost-calculated-val">$${cost.toFixed(2)}</td>
+                      ${isEdit ? `
+                        <td>
+                          <button class="btn-action-trigger text-danger" onclick="app.deleteRecipeLabor('${r.id}', ${idx})" title="Remove">
+                            <i data-lucide="x" style="width:12px; height:12px;"></i>
+                          </button>
+                        </td>
+                      ` : ''}
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Packaging -->
+          <div class="costing-card">
+            <div class="costing-card-header">
+              <div class="costing-card-title">
+                <i data-lucide="box"></i>
+                <span>Packaging</span>
+              </div>
+              ${isEdit ? `
+                <button class="btn btn-outline btn-sm" onclick="app.addRecipePackaging('${r.id}')">
+                  <i data-lucide="plus" style="width:12px; height:12px;"></i> Add Item
+                </button>
+              ` : ''}
+            </div>
+            <table class="costing-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th style="width:75px;">Price ($)</th>
+                  <th style="width:70px;">Pack Size</th>
+                  <th style="width:70px;">Qty Needed</th>
+                  <th style="width:75px;">Cost ($)</th>
+                  ${isEdit ? '<th style="width:30px;"></th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${(r.packaging || []).map((p, idx) => {
+                  const price = parseFloat(p.price) || 0;
+                  const size = parseFloat(p.size) || 1;
+                  const qty = parseFloat(p.qty) || 0;
+                  const perUnit = size > 0 ? price / size : 0;
+                  const cost = perUnit * qty;
+                  return `
+                    <tr>
+                      <td><input type="text" class="costing-input-sm" value="${p.item}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'item', this.value)"></td>
+                      <td><input type="number" step="0.01" class="costing-input-sm" value="${p.price}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'price', this.value)"></td>
+                      <td><input type="number" step="1" class="costing-input-sm" value="${p.size}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'size', this.value)"></td>
+                      <td><input type="number" step="0.1" class="costing-input-sm" value="${p.qty}" onchange="app.updateRecipePackaging('${r.id}', ${idx}, 'qty', this.value)"></td>
+                      <td class="cost-calculated-val">$${cost.toFixed(2)}</td>
+                      ${isEdit ? `
+                        <td>
+                          <button class="btn-action-trigger text-danger" onclick="app.deleteRecipePackaging('${r.id}', ${idx})" title="Remove">
+                            <i data-lucide="x" style="width:12px; height:12px;"></i>
+                          </button>
+                        </td>
+                      ` : ''}
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Profit Summary Card (Matching Spreadsheet Breakdown) -->
+          <div class="profit-summary-card">
+            <h4 style="margin-top:0; margin-bottom:14px; color:var(--color-primary); font-size:1.05rem; display:flex; align-items:center; gap:8px;">
+              <i data-lucide="calculator" style="width:18px; height:18px;"></i>
+              <span>Cost Breakdown & Profit Margin</span>
+            </h4>
+            
+            <table class="summary-table">
+              <tr>
+                <td class="summary-label">INGREDIENTS & FROSTING</td>
+                <td class="summary-val">$${totals.ingredientsCost.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="summary-label">PREPARATION & LABOR</td>
+                <td class="summary-val">$${totals.laborCost.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="summary-label">PACKAGING</td>
+                <td class="summary-val">$${totals.packagingCost.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="summary-label">DELIVERY</td>
+                <td class="summary-val">$${totals.deliveryCost.toFixed(2)}</td>
+              </tr>
+              <tr class="summary-grand-row">
+                <td class="summary-label" style="color:var(--color-text);">GRAND TOTAL COST</td>
+                <td class="summary-val">$${totals.grandTotal.toFixed(2)}</td>
+              </tr>
+            </table>
+
+            <div class="profit-margin-highlight">
+              <div class="margin-stat-row">
+                <span class="margin-stat-label">SALE PRICE ($):</span>
+                <input type="number" step="1" class="costing-input-sm" style="width:110px; font-size:1.1rem; font-weight:700; text-align:right; color:var(--color-primary);" value="${r.salePrice}" onchange="app.updateRecipeHeader('${r.id}', 'salePrice', this.value)">
+              </div>
+              <div class="margin-stat-row">
+                <span class="margin-stat-label">NET PROFIT:</span>
+                <span class="margin-stat-val" style="color:${totals.netProfit >= 0 ? '#27ae60' : '#e74c3c'}">$${totals.netProfit.toFixed(2)}</span>
+              </div>
+              <div class="margin-stat-row">
+                <span class="margin-stat-label">PROFIT MARGIN:</span>
+                <span class="profit-badge-pill ${marginClass}">${totals.profitMargin.toFixed(2)}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    lucide.createIcons();
+  },
+
+  updateRecipeHeader(recipeId, field, val) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r) return;
+    if (field === 'salePrice') r.salePrice = parseFloat(val) || 0;
+    else r[field] = val;
+    this.saveState();
+    this.saveToDrive();
+    this.renderRecipeTabs();
+    this.renderActiveRecipeContent();
+  },
+
+  updateRecipeIngredient(recipeId, idx, field, val) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.ingredients || !r.ingredients[idx]) return;
+    if (field === 'price' || field === 'size' || field === 'qty') {
+      r.ingredients[idx][field] = parseFloat(val) || 0;
+    } else {
+      r.ingredients[idx][field] = val;
+    }
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  addRecipeIngredient(recipeId) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r) return;
+    if (!r.ingredients) r.ingredients = [];
+    r.ingredients.push({ name: 'New Ingredient', category: 'Ingredients', price: 5.00, size: 1000, qty: 100 });
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  deleteRecipeIngredient(recipeId, idx) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.ingredients) return;
+    r.ingredients.splice(idx, 1);
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  updateRecipeLabor(recipeId, idx, field, val) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.labor || !r.labor[idx]) return;
+    if (field === 'rate' || field === 'hours') {
+      r.labor[idx][field] = parseFloat(val) || 0;
+    } else {
+      r.labor[idx][field] = val;
+    }
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  addRecipeLabor(recipeId) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r) return;
+    if (!r.labor) r.labor = [];
+    r.labor.push({ task: 'Baking & Decorating', rate: 15, hours: 1 });
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  deleteRecipeLabor(recipeId, idx) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.labor) return;
+    r.labor.splice(idx, 1);
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  updateRecipePackaging(recipeId, idx, field, val) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.packaging || !r.packaging[idx]) return;
+    if (field === 'price' || field === 'size' || field === 'qty') {
+      r.packaging[idx][field] = parseFloat(val) || 0;
+    } else {
+      r.packaging[idx][field] = val;
+    }
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  addRecipePackaging(recipeId) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r) return;
+    if (!r.packaging) r.packaging = [];
+    r.packaging.push({ item: 'Packaging Box', price: 2.00, size: 1, qty: 1 });
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  deleteRecipePackaging(recipeId, idx) {
+    const r = this.recipes.find(rec => rec.id === recipeId);
+    if (!r || !r.packaging) return;
+    r.packaging.splice(idx, 1);
+    this.saveState();
+    this.saveToDrive();
+    this.renderActiveRecipeContent();
+  },
+
+  handleRecipeSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('recipe-form-id').value;
+    const name = document.getElementById('recipe-form-name').value;
+    const salePrice = parseFloat(document.getElementById('recipe-form-price').value) || 0;
+    const yieldVal = document.getElementById('recipe-form-yield').value;
+
+    if (id) {
+      const idx = this.recipes.findIndex(rec => rec.id === id);
+      if (idx !== -1) {
+        this.recipes[idx].name = name;
+        this.recipes[idx].salePrice = salePrice;
+        this.recipes[idx].yield = yieldVal;
+        this.activeRecipeId = id;
+      }
+    } else {
+      const newId = `REC-${Date.now()}`;
+      const newRecipe = {
+        id: newId,
+        name,
+        salePrice,
+        yield: yieldVal,
+        ingredients: [
+          { name: 'Flour (All Purpose)', category: 'Bread', price: 11.99, size: 5000, qty: 100 },
+          { name: 'Granulated Sugar', category: 'Bread', price: 5.99, size: 4000, qty: 150 }
+        ],
+        labor: [],
+        packaging: [
+          { item: 'Box', price: 1.50, size: 1, qty: 1 }
+        ],
+        delivery: { miles: 0, ratePerMile: 0 }
+      };
+
+      this.recipes.push(newRecipe);
+      this.activeRecipeId = newId;
+    }
+
+    this.saveState();
+    this.saveToDrive();
+    this.closeModal('recipeModal');
+    this.renderRecipesWorkspace();
+  },
+
+  deleteRecipe(recipeId) {
+    if (confirm("Are you sure you want to delete this product recipe?")) {
+      this.recipes = this.recipes.filter(rec => rec.id !== recipeId);
+      if (this.recipes.length > 0) {
+        this.activeRecipeId = this.recipes[0].id;
+      } else {
+        this.activeRecipeId = null;
+      }
+      this.saveState();
+      this.saveToDrive();
+      this.renderRecipesWorkspace();
+    }
+  },
+
+  // ----------------------------------------------------
+  // CSV / EXCEL IMPORT ENGINE
+  // ----------------------------------------------------
+
+  // Internal state for the import wizard
+  _import: {
+    type: 'orders',       // 'orders' | 'expenses'
+    rawHeaders: [],       // Column names from the uploaded file
+    rawRows: [],          // Array of row objects from the file
+    parsedFile: false
+  },
+
+  // App field definitions for mapping
+  _orderFields: [
+    { key: 'customerName',  label: 'Customer Name',     required: true,  aliases: ['name', 'customer', 'client', 'customer name'] },
+    { key: 'items',         label: 'Order Details',     required: true,  aliases: ['details', 'items', 'order', 'product', 'description', 'cake', 'item'] },
+    { key: 'customerPhone', label: 'Phone',             required: false, aliases: ['phone', 'mobile', 'contact', 'tel'] },
+    { key: 'customerEmail', label: 'Email / Social ID', required: false, aliases: ['email', 'social', 'instagram', 'media id', 'email/social media id', 'social media'] },
+    { key: 'platform',      label: 'Owner / Platform',  required: false, aliases: ['owner', 'platform', 'channel', 'source'] },
+    { key: 'orderStatus',   label: 'Status',            required: false, aliases: ['status', 'order status', 'state'] },
+    { key: 'pickupDate',    label: 'Due Date',          required: false, aliases: ['due date', 'date', 'pickup', 'delivery date', 'pickup date'] },
+    { key: 'total',         label: 'Total Price',       required: false, aliases: ['total price', 'total', 'amount', 'price', 'grand total'] },
+    { key: 'advance',       label: 'Advance',           required: false, aliases: ['advance', 'deposit', 'paid', 'advance paid'] },
+    { key: 'remaining',     label: 'Pending Price',     required: false, aliases: ['pending price', 'pending', 'remaining', 'balance', 'due', 'outstanding'] },
+    { key: 'payments',      label: 'Mode of Payment',  required: false, aliases: ['mode of payment', 'payment mode', 'payment method', 'payment', 'mode'] },
+    { key: 'notes',         label: 'Notes',             required: false, aliases: ['notes', 'remarks', 'comment', 'special instructions'] }
+  ],
+
+  _expenseFields: [
+    { key: 'date',        label: 'Date',             required: true,  aliases: ['date', 'transaction date', 'expense date'] },
+    { key: 'item',        label: 'Description',      required: true,  aliases: ['description', 'item', 'expense item', 'sub-description', 'name', 'subdescription'] },
+    { key: 'category',   label: 'Category',         required: false, aliases: ['category', 'type', 'type of transaction', 'expense type'] },
+    { key: 'amount',     label: 'Amount',           required: true,  aliases: ['amount', 'total', 'price', 'cost', 'value'] },
+    { key: 'method',     label: 'Payment Method',   required: false, aliases: ['payment method', 'method', 'payment mode', 'mode', 'paid via'] },
+    { key: 'notes',      label: 'Notes',            required: false, aliases: ['notes', 'remarks', 'comment', 'status', 'reference'] }
+  ],
+
+  openImportModal(type) {
+    // Reset state
+    this._import = { type: type || 'orders', rawHeaders: [], rawRows: [], parsedFile: false };
+
+    // Reset UI to step 1
+    document.getElementById('import-step-1').style.display = '';
+    document.getElementById('import-step-2').style.display = 'none';
+    document.getElementById('import-step-3').style.display = 'none';
+    document.getElementById('import-file-info').style.display = 'none';
+    document.getElementById('import-dropzone').style.display = '';
+    document.getElementById('import-file-input').value = '';
+    document.getElementById('btn-import-next').disabled = true;
+
+    // Set toggle state
+    document.querySelectorAll('.import-type-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-type') === this._import.type);
+    });
+
+    document.getElementById('importModalTitle').textContent =
+      this._import.type === 'orders' ? 'Import Orders' : 'Import Expenses';
+
+    this.openModal('importModal');
+  },
+
+  setupImportModalListeners() {
+    // Close / cancel
+    document.getElementById('btn-import-modal-close').addEventListener('click', () => this.closeModal('importModal'));
+    document.getElementById('btn-import-cancel').addEventListener('click', () => this.closeModal('importModal'));
+    document.getElementById('btn-import-done').addEventListener('click', () => {
+      this.closeModal('importModal');
+      this.refreshActiveTabTable();
+      if (this.activeTab === 'dashboard') this.renderDashboard();
+    });
+
+    // Back button (step 2 → step 1)
+    document.getElementById('btn-import-back').addEventListener('click', () => {
+      document.getElementById('import-step-2').style.display = 'none';
+      document.getElementById('import-step-1').style.display = '';
+    });
+
+    // Type toggle buttons
+    document.querySelectorAll('.import-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.import-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._import.type = btn.getAttribute('data-type');
+        document.getElementById('importModalTitle').textContent =
+          this._import.type === 'orders' ? 'Import Orders' : 'Import Expenses';
+        // Re-run auto-match if file is already loaded
+        if (this._import.parsedFile) this._renderMappingGrid();
+      });
+    });
+
+    // File input change
+    document.getElementById('import-file-input').addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        this._handleImportFile(e.target.files[0]);
+      }
+    });
+
+    // Clear file
+    document.getElementById('btn-import-file-clear').addEventListener('click', () => {
+      this._import.parsedFile = false;
+      this._import.rawHeaders = [];
+      this._import.rawRows = [];
+      document.getElementById('import-file-info').style.display = 'none';
+      document.getElementById('import-dropzone').style.display = '';
+      document.getElementById('import-file-input').value = '';
+      document.getElementById('btn-import-next').disabled = true;
+    });
+
+    // Drag and drop
+    const dz = document.getElementById('import-dropzone');
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dz.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) this._handleImportFile(file);
+    });
+    dz.addEventListener('click', () => document.getElementById('import-file-input').click());
+
+    // Next: go to mapping
+    document.getElementById('btn-import-next').addEventListener('click', () => {
+      document.getElementById('import-step-1').style.display = 'none';
+      document.getElementById('import-step-2').style.display = '';
+      this._renderMappingGrid();
+    });
+
+    // Confirm import
+    document.getElementById('btn-import-confirm').addEventListener('click', () => this._executeImport());
+  },
+
+  _handleImportFile(file) {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.xlsx') && !name.endsWith('.xls') && !name.endsWith('.csv')) {
+      alert('Please upload a .xlsx, .xls, or .csv file.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+
+        if (json.length === 0) {
+          alert('The file appears to be empty or has no data rows.');
+          return;
+        }
+
+        this._import.rawHeaders = Object.keys(json[0]);
+        this._import.rawRows = json;
+        this._import.parsedFile = true;
+
+        // Show file info
+        document.getElementById('import-file-name').textContent = file.name;
+        document.getElementById('import-file-rows').textContent = `${json.length} row${json.length !== 1 ? 's' : ''}`;
+        document.getElementById('import-file-info').style.display = 'flex';
+        document.getElementById('import-dropzone').style.display = 'none';
+        document.getElementById('btn-import-next').disabled = false;
+      } catch (err) {
+        console.error('File parse error:', err);
+        alert('Could not read the file. Please ensure it is a valid Excel or CSV file.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  },
+
+  _autoMatchColumn(fileHeader) {
+    // Try to auto-match a file column header to an app field key
+    const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+    const fields = this._import.type === 'orders' ? this._orderFields : this._expenseFields;
+    const fhNorm = normalize(fileHeader);
+
+    for (const field of fields) {
+      for (const alias of field.aliases) {
+        if (normalize(alias) === fhNorm || fhNorm.includes(normalize(alias)) || normalize(alias).includes(fhNorm)) {
+          return field.key;
+        }
+      }
+    }
+    return '__skip__';
+  },
+
+  _renderMappingGrid() {
+    const fields = this._import.type === 'orders' ? this._orderFields : this._expenseFields;
+    const headers = this._import.rawHeaders;
+    const grid = document.getElementById('import-mapping-grid');
+    grid.innerHTML = '';
+
+    // Build a map: fileHeader → auto-matched appField
+    const autoMapped = {};
+    headers.forEach(h => { autoMapped[h] = this._autoMatchColumn(h); });
+
+    fields.forEach(field => {
+      // Find which file column was auto-matched to this field
+      const matchedHeader = Object.keys(autoMapped).find(h => autoMapped[h] === field.key) || '';
+
+      const row = document.createElement('div');
+      row.className = 'import-mapping-row' + (field.required ? ' required-field' : '');
+
+      // Left: App field label
+      const labelDiv = document.createElement('div');
+      labelDiv.className = 'import-mapping-label';
+      labelDiv.innerHTML = `${field.label}${field.required ? '<span class="import-mapping-required">Required</span>' : ''}`;
+
+      // Arrow
+      const arrowDiv = document.createElement('div');
+      arrowDiv.className = 'import-mapping-arrow';
+      arrowDiv.textContent = '←';
+
+      // Right: dropdown of file columns
+      const select = document.createElement('select');
+      select.className = 'import-mapping-select';
+      select.setAttribute('data-field', field.key);
+
+      const skipOpt = document.createElement('option');
+      skipOpt.value = '__skip__';
+      skipOpt.textContent = '— Skip this field —';
+      select.appendChild(skipOpt);
+
+      headers.forEach(h => {
+        const opt = document.createElement('option');
+        opt.value = h;
+        opt.textContent = h;
+        if (h === matchedHeader) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      if (!matchedHeader) select.value = '__skip__';
+
+      row.appendChild(labelDiv);
+      row.appendChild(arrowDiv);
+      row.appendChild(select);
+      grid.appendChild(row);
+    });
+
+    // Render preview of the raw data
+    this._renderImportPreview();
+  },
+
+  _renderImportPreview() {
+    const headers = this._import.rawHeaders;
+    const rows = this._import.rawRows.slice(0, 3);
+    const thead = document.getElementById('import-preview-thead');
+    const tbody = document.getElementById('import-preview-tbody');
+    const countEl = document.getElementById('import-preview-count');
+
+    countEl.textContent = `(showing ${rows.length} of ${this._import.rawRows.length} rows)`;
+
+    thead.innerHTML = '<tr>' + headers.map(h => `<th style="font-size:0.75rem; white-space:nowrap;">${h}</th>`).join('') + '</tr>';
+    tbody.innerHTML = rows.map(row =>
+      '<tr>' + headers.map(h => {
+        const val = String(row[h] || '');
+        return `<td style="font-size:0.75rem; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${val}">${val}</td>`;
+      }).join('') + '</tr>'
+    ).join('');
+  },
+
+  _executeImport() {
+    const type = this._import.type;
+    const rows = this._import.rawRows;
+
+    // Build a field→column map from the selects
+    const mapping = {};
+    document.querySelectorAll('#import-mapping-grid .import-mapping-select').forEach(sel => {
+      const fieldKey = sel.getAttribute('data-field');
+      const colHeader = sel.value;
+      if (colHeader !== '__skip__') mapping[fieldKey] = colHeader;
+    });
+
+    // Validate required fields are mapped
+    const fields = type === 'orders' ? this._orderFields : this._expenseFields;
+    const missingRequired = fields.filter(f => f.required && !mapping[f.key]);
+    if (missingRequired.length > 0) {
+      alert('Please map these required fields first:\n' + missingRequired.map(f => '• ' + f.label).join('\n'));
+      return;
+    }
+
+    let imported = 0;
+    let skipped = 0;
+
+    if (type === 'orders') {
+      rows.forEach(row => {
+        try {
+          const customerName = (row[mapping.customerName] || '').trim();
+          if (!customerName) { skipped++; return; }
+
+          const items = (row[mapping.items] || 'Import').trim();
+
+          // Parse date: try to get a valid datetime string
+          let pickupDate = '2025-07-31T12:00';
+          if (mapping.pickupDate && row[mapping.pickupDate]) {
+            const d = new Date(row[mapping.pickupDate]);
+            if (!isNaN(d.getTime())) {
+              pickupDate = d.toISOString().slice(0, 16);
+            } else {
+              pickupDate = String(row[mapping.pickupDate]).replace(' ', 'T').slice(0, 16) || pickupDate;
+            }
+          }
+
+          const total    = parseFloat(row[mapping.total]    || 0) || 0;
+          const advance  = parseFloat(row[mapping.advance]  || 0) || 0;
+          const remaining = mapping.remaining
+            ? (parseFloat(row[mapping.remaining] || 0) || 0)
+            : Math.max(0, total - advance);
+
+          const platform    = (row[mapping.platform]    || '').trim();
+          const orderStatus = (row[mapping.orderStatus]  || 'Completed').trim();
+          const notes       = (row[mapping.notes]        || '').trim();
+          const customerPhone = (row[mapping.customerPhone] || '').trim();
+          const customerEmail = (row[mapping.customerEmail] || '').trim();
+
+          // Parse payment mode into array format
+          let payments = [];
+          if (mapping.payments && row[mapping.payments]) {
+            const rawPayment = String(row[mapping.payments]).trim();
+            if (rawPayment) payments = [rawPayment];
+          }
+
+          const newId = `IMP-${Date.now()}-${imported}`;
+          const newOrder = {
+            id: newId,
+            customerName, customerPhone, customerEmail,
+            items, pickupDate, advance, remaining, total,
+            payments, platform, orderStatus, notes
+          };
+
+          this.orders.push(newOrder);
+
+          // Update/create customer profile
+          if (customerName) {
+            this.updateCustomerProfile(customerName, customerPhone, customerEmail, total);
+          }
+
+          imported++;
+        } catch (err) {
+          console.warn('Skipped row due to error:', err, row);
+          skipped++;
+        }
+      });
+
+    } else {
+      // Expenses import
+      rows.forEach(row => {
+        try {
+          const date = mapping.date
+            ? this._parseImportDate(row[mapping.date])
+            : this.currentDate.toISOString().slice(0, 10);
+
+          const item = (row[mapping.item] || '').trim();
+          if (!item) { skipped++; return; }
+
+          const amount = parseFloat(row[mapping.amount] || 0) || 0;
+          if (amount === 0 && !mapping.amount) { skipped++; return; }
+
+          // Ensure category exists; add it if not
+          let category = (row[mapping.category] || 'Uncategorised').trim() || 'Uncategorised';
+          if (!this.expenseCategories.includes(category)) {
+            this.expenseCategories.push(category);
+          }
+
+          const method = (row[mapping.method] || 'Cash').trim() || 'Cash';
+          const notes  = (row[mapping.notes]  || '').trim();
+
+          const newId = `EXP-IMP-${Date.now()}-${imported}`;
+          this.expenses.push({ id: newId, date, category, item, amount, method, notes });
+          imported++;
+        } catch (err) {
+          console.warn('Skipped expense row:', err, row);
+          skipped++;
+        }
+      });
+    }
+
+    this.saveState();
+    this.saveToDrive();
+
+    // Show step 3 (done)
+    document.getElementById('import-step-2').style.display = 'none';
+    document.getElementById('import-step-3').style.display = '';
+    document.getElementById('import-done-title').textContent = imported > 0 ? 'Import Successful!' : 'Nothing Imported';
+    document.getElementById('import-done-message').textContent =
+      imported > 0
+        ? `${imported} ${type} record${imported !== 1 ? 's' : ''} were added to your app.`
+        : 'No records were imported. Please check your file and column mapping.';
+
+    const statsEl = document.getElementById('import-done-stats');
+    statsEl.innerHTML = [
+      `<span class="import-stat-pill success">${imported} Imported</span>`,
+      skipped > 0 ? `<span class="import-stat-pill warning">${skipped} Skipped</span>` : ''
+    ].join('');
+
+    lucide.createIcons();
+  },
+
+  _parseImportDate(rawVal) {
+    if (!rawVal) return this.currentDate.toISOString().slice(0, 10);
+    const str = String(rawVal).trim();
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    // Try common formats: DD/MM/YYYY or MM/DD/YYYY
+    const parts = str.split(/[\/\-\.]/); 
+    if (parts.length === 3) {
+      const y = parts[2].length === 4 ? parts[2] : '20' + parts[2];
+      const m = parts[1].padStart(2, '0');
+      const day = parts[0].padStart(2, '0');
+      const attempt = new Date(`${y}-${m}-${day}`);
+      if (!isNaN(attempt.getTime())) return attempt.toISOString().slice(0, 10);
+    }
+    return this.currentDate.toISOString().slice(0, 10);
   }
 };
 
