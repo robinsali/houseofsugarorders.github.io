@@ -180,6 +180,27 @@ const app = {
   showAuthenticatedApp() {
     this.isAuthenticated = true;
 
+    // Sync top header period filter with app state
+    const dashPeriodSelect = document.getElementById('dashboard-period-select');
+    const dashDateStart = document.getElementById('dashboard-date-start');
+    const dashDateEnd = document.getElementById('dashboard-date-end');
+
+    if (dashPeriodSelect) {
+      this.dashboardPeriod = dashPeriodSelect.value || 'all';
+      if (this.dashboardPeriod === 'all') {
+        this.dashboardDateStart = '';
+        this.dashboardDateEnd = '';
+        if (dashDateStart) dashDateStart.value = '';
+        if (dashDateEnd) dashDateEnd.value = '';
+      } else if (this.dashboardPeriod !== 'custom') {
+        const range = this.getPeriodDates(this.dashboardPeriod);
+        this.dashboardDateStart = range.start;
+        this.dashboardDateEnd = range.end;
+        if (dashDateStart) dashDateStart.value = range.start;
+        if (dashDateEnd) dashDateEnd.value = range.end;
+      }
+    }
+
     // If no orders or if orders only contain legacy outdated seed dates, initialize/refresh seed database
     const hasCurrentDates = this.orders.some(o => (o.pickupDate || '').slice(0, 4) === String(new Date().getFullYear()));
     if (this.orders.length === 0 || !hasCurrentDates) {
@@ -195,6 +216,7 @@ const app = {
     if (appContainer) appContainer.style.display = 'flex';
 
     this.renderNotifications();
+    this.setupReportsDates();
     this.switchTab(this.activeTab || 'dashboard');
   },
 
@@ -1334,14 +1356,14 @@ const app = {
 
   // Helper: filter orders by period & date range dynamically
   getOrdersInPeriod(period) {
-    let start = this.dashboardDateStart;
-    let end = this.dashboardDateEnd;
+    let start = period === 'all' ? '' : this.dashboardDateStart;
+    let end = period === 'all' ? '' : this.dashboardDateEnd;
 
-    if ((!period || period === 'all') && !start && !end) {
+    if (!period || period === 'all') {
       return this.orders.filter(o => o.orderStatus !== 'Cancelled');
     }
 
-    if (period && period !== 'custom' && period !== 'all' && (!start || !end)) {
+    if (period !== 'custom' && (!start || !end)) {
       const dates = this.getPeriodDates(period);
       start = dates.start;
       end = dates.end;
@@ -1359,14 +1381,14 @@ const app = {
 
   // Helper: filter expenses by period & date range dynamically
   getExpensesInPeriod(period) {
-    let start = this.dashboardDateStart;
-    let end = this.dashboardDateEnd;
+    let start = period === 'all' ? '' : this.dashboardDateStart;
+    let end = period === 'all' ? '' : this.dashboardDateEnd;
 
-    if ((!period || period === 'all') && !start && !end) {
+    if (!period || period === 'all') {
       return this.expenses;
     }
 
-    if (period && period !== 'custom' && period !== 'all' && (!start || !end)) {
+    if (period !== 'custom' && (!start || !end)) {
       const dates = this.getPeriodDates(period);
       start = dates.start;
       end = dates.end;
@@ -2004,10 +2026,16 @@ const app = {
     const endInput = document.getElementById('report-date-end');
     const periodSelect = document.getElementById('report-period-select');
 
-    if (periodSelect && periodSelect.value !== 'all' && periodSelect.value !== 'custom') {
-      const range = this.getPeriodDates(periodSelect.value);
-      if (startInput) startInput.value = range.start;
-      if (endInput) endInput.value = range.end;
+    if (periodSelect) {
+      if (!periodSelect.value) periodSelect.value = 'all';
+      if (periodSelect.value === 'all') {
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+      } else if (periodSelect.value !== 'custom') {
+        const range = this.getPeriodDates(periodSelect.value);
+        if (startInput) startInput.value = range.start;
+        if (endInput) endInput.value = range.end;
+      }
     }
   },
 
