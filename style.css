@@ -1610,8 +1610,72 @@ html[data-theme="dark"] .calendar-day-cell.today {
 }
 
 @media (max-width: 900px) {
-  .reports-layout {
+  .reports-layout,
+  .settings-layout {
     grid-template-columns: 1fr;
+    gap: 15px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .reports-sidebar,
+  .settings-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    padding: 10px;
+    border-radius: 14px;
+    background-color: var(--color-bg-panel);
+    border: 1px solid var(--color-border);
+  }
+
+  .reports-sidebar ul,
+  .settings-sidebar ul {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    gap: 8px;
+    width: max-content !important;
+    min-width: 100%;
+    padding: 2px 0;
+    margin: 0;
+    list-style: none;
+  }
+
+  .reports-sidebar ul li,
+  .settings-sidebar ul li {
+    flex-shrink: 0 !important;
+    display: inline-block !important;
+  }
+
+  .report-tab-item,
+  .settings-tab-item {
+    margin-bottom: 0 !important;
+    padding: 8px 16px !important;
+    font-size: 0.82rem !important;
+    border-radius: 20px !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--color-bg-app);
+    border: 1px solid var(--color-border);
+  }
+
+  .report-tab-item.active,
+  .settings-tab-item.active {
+    background-color: var(--color-primary-light) !important;
+    color: var(--color-primary) !important;
+    border-color: var(--color-primary) !important;
+    font-weight: 600 !important;
   }
 }
 
@@ -1878,11 +1942,42 @@ html[data-theme="dark"] .backup-box {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .form-control-file {
   font-size: 0.8rem;
   flex: 1;
+  min-width: 200px;
+}
+
+@media (max-width: 600px) {
+  .settings-main {
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .backup-box {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .import-file-selector {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .import-file-selector .form-control-file {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  .import-file-selector .btn,
+  .backup-box .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .backup-box.danger-zone {
@@ -2704,7 +2799,6 @@ body {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow-x: hidden;
     box-sizing: border-box;
   }
 
@@ -2712,7 +2806,6 @@ body {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow-x: hidden;
     box-sizing: border-box;
   }
 
@@ -2740,6 +2833,7 @@ body {
     min-width: 0 !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
     box-sizing: border-box;
     position: relative;
     border-radius: 14px;
@@ -2747,7 +2841,7 @@ body {
 
   .table-container::before,
   .table-responsive::before {
-    content: "↔ Swipe sideways to view all table columns";
+    content: "↔ Swipe left/right to view full table";
     display: block;
     padding: 7px 12px;
     font-size: 0.72rem;
@@ -2757,31 +2851,10 @@ body {
     border-bottom: 1px solid var(--color-border);
     text-align: center;
     letter-spacing: 0.3px;
-    sticky: top 0;
   }
 
   .data-table {
-    min-width: 860px;
-  }
-
-  /* Sticky first column (Order ID / Item name) on mobile */
-  .data-table th:first-child,
-  .data-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 4;
-    background: var(--color-bg-panel);
-    box-shadow: 3px 0 8px rgba(0, 0, 0, 0.06);
-  }
-
-  /* Sticky action column on mobile */
-  .data-table th:last-child,
-  .data-table td:last-child {
-    position: sticky;
-    right: 0;
-    z-index: 4;
-    background: var(--color-bg-panel);
-    box-shadow: -3px 0 8px rgba(0, 0, 0, 0.06);
+    min-width: 920px;
   }
 
   /* Mobile Bottom Navigation Bar */

@@ -1064,9 +1064,14 @@ const app = {
         document.querySelectorAll('.settings-tab-item').forEach(i => i.classList.remove('active'));
         item.classList.add('active');
 
+        try {
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } catch (err) {}
+
         const targetSection = item.getAttribute('data-settings-section');
         document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
-        document.getElementById(`settings-${targetSection}`).classList.add('active');
+        const targetEl = document.getElementById(`settings-${targetSection}`);
+        if (targetEl) targetEl.classList.add('active');
       });
     });
 
