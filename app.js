@@ -131,7 +131,6 @@ const app = {
       if (cached && cached.expires_at > Date.now()) {
         this.accessToken = cached.token;
         this.updateSignInUI(true);
-        this.showAuthenticatedApp();
         this.loadFromDrive();
         return;
       }
@@ -244,7 +243,6 @@ const app = {
           }));
           localStorage.setItem('hos_authenticated', 'true');
           this.updateSignInUI(true);
-          this.showAuthenticatedApp();
           this.loadFromDrive();
         }
       });
