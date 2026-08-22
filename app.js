@@ -5,6 +5,9 @@
 
 // Application State Namespace
 const app = {
+  // Security & Authentication State
+  isAuthenticated: false,
+
   // Database Tables
   orders: [],
   expenses: [],
@@ -19,15 +22,16 @@ const app = {
 
   // UI Navigation & Filters
   activeTab: 'dashboard',
-  currentDate: new Date(2025, 6, 31), // Seed base date: July 31, 2025
-  calendarDate: new Date(2025, 7, 1), // Calendar start: August 2025
+  currentDate: new Date(),
 
-  // Dashboard Period Filter ('all', 'today', 'week', 'month', 'year')
+  // Dashboard Date Range & Period Filter ('all', 'today', 'week', 'month', 'year', 'custom')
   dashboardPeriod: 'all',
+  dashboardDateStart: '',
+  dashboardDateEnd: '',
 
   // Dashboard Mini-Calendar Date selectors
-  miniCalDate: new Date(2025, 6, 1), // July 2025
-  miniCalSelectedDayStr: '2025-07-31', // Seed selected day
+  miniCalDate: new Date(),
+  miniCalSelectedDayStr: new Date().toISOString().slice(0, 10),
 
   // Charts references
   charts: {
@@ -45,37 +49,42 @@ const app = {
     payments: { current: 1, limit: 5 }
   },
 
+  // Column Sort States
+  ordersSort: { col: 'pickupDate', dir: 'desc' },
+  expensesSort: { col: 'date', dir: 'desc' },
+  paymentsSort: { col: 'pickupDate', dir: 'desc' },
+
   // ----------------------------------------------------
-  // INITIALIZATION & DATA SEEDING
+  // INITIALIZATION & SECURITY GATEWAY
   // ----------------------------------------------------
   init() {
-    this.loadState();
-
-    if (this.orders.length === 0) {
-      this.seedDatabase();
-    }
-    if (!this.recipes || this.recipes.length === 0) {
-      this.seedRecipesData();
-    }
-
     this.setupEventListeners();
-    this.switchTab('dashboard');
     this.updateGlobalHeader();
+
+    // Show loading state initially while verifying OAuth session
+    const loadingOverlay = document.getElementById('auth-loading-overlay');
+    const authOverlay = document.getElementById('auth-overlay');
+    const appContainer = document.getElementById('app-main-container');
+
+    if (loadingOverlay) loadingOverlay.style.display = 'flex';
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (appContainer) appContainer.style.display = 'none';
+
     this.initGoogleDrive();
 
     // Initialise Lucide icons
     lucide.createIcons();
   },
 
-  // Load state from localStorage
+  // Load state from localStorage cache (offline/session support)
   loadState() {
     try {
       this.orders = JSON.parse(localStorage.getItem('hos_orders')) || [];
       this.expenses = JSON.parse(localStorage.getItem('hos_expenses')) || [];
       this.customers = JSON.parse(localStorage.getItem('hos_customers')) || [];
       this.inventory = JSON.parse(localStorage.getItem('hos_inventory')) || [];
-      this.expenseCategories = JSON.parse(localStorage.getItem('hos_expense_categories')) || [];
-      this.inventoryCategories = JSON.parse(localStorage.getItem('hos_inventory_categories')) || [];
+      this.expenseCategories = JSON.parse(localStorage.getItem('hos_expense_categories')) || ['Ingredients', 'Packaging', 'Utilities', 'Marketing', 'Delivery', 'Equipment', 'Rent', 'Others'];
+      this.inventoryCategories = JSON.parse(localStorage.getItem('hos_inventory_categories')) || ['Ingredients', 'Packaging', 'Decorations', 'Tools'];
       this.recipes = JSON.parse(localStorage.getItem('hos_recipes')) || [];
       this.settings = JSON.parse(localStorage.getItem('hos_settings')) || {};
 
@@ -88,6 +97,7 @@ const app = {
 
   // Save state to localStorage
   saveState() {
+    if (!this.isAuthenticated) return; // Never persist unauthenticated state
     try {
       localStorage.setItem('hos_orders', JSON.stringify(this.orders));
       localStorage.setItem('hos_expenses', JSON.stringify(this.expenses));
@@ -103,11 +113,8 @@ const app = {
   },
 
   // ----------------------------------------------------
-  // GOOGLE DRIVE SYNC ENGINE (OAuth — no API key needed)
+  // GOOGLE DRIVE SYNC ENGINE & SECURITY AUTHENTICATION
   // ----------------------------------------------------
-  // Replace the placeholder below with your OAuth 2.0 Client ID from Google Cloud Console.
-  // The Client ID is safe to commit publicly — it is NOT a secret.
-  // Setup guide: see walkthrough.md in the project documentation.
   GOOGLE_CLIENT_ID: '186068315207-7ceuk54pdnfdp0pdhk3qlil890gs1n1d.apps.googleusercontent.com',
   DRIVE_FILE_NAME: 'house-of-sugar-data.json',
 
@@ -118,7 +125,7 @@ const app = {
   saveDriveTimer: null,
 
   initGoogleDrive() {
-    // Restore cached OAuth token if still valid
+    // Check cached OAuth token
     try {
       const cached = JSON.parse(localStorage.getItem('hos_drive_token') || 'null');
       if (cached && cached.expires_at > Date.now()) {
@@ -128,18 +135,86 @@ const app = {
         return;
       }
     } catch (e) { }
-    localStorage.removeItem('hos_drive_token');
 
-    // Wait for Google Identity Services to load, then show sign-in prompt
-    const waitForGIS = () => {
-      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        this.updateCloudStatus(false, 'Drive: Sign In Required');
-        this.updateSignInUI(false);
-      } else {
-        setTimeout(waitForGIS, 300);
-      }
-    };
-    waitForGIS();
+    // No valid token -> show auth screen (ZERO business data rendered)
+    localStorage.removeItem('hos_drive_token');
+    this.showAuthScreen();
+  },
+
+  showAuthScreen() {
+    this.isAuthenticated = false;
+    this.accessToken = null;
+    this.driveFileId = null;
+    this.tokenClient = null;
+
+    // Reset all memory database arrays to empty
+    this.orders = [];
+    this.expenses = [];
+    this.customers = [];
+    this.inventory = [];
+    this.recipes = [];
+    this.settings = {};
+
+    // Clear DOM content to ensure zero business data leaks
+    this.clearUIContainers();
+
+    const loadingOverlay = document.getElementById('auth-loading-overlay');
+    const authOverlay = document.getElementById('auth-overlay');
+    const appContainer = document.getElementById('app-main-container');
+
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (authOverlay) authOverlay.style.display = 'flex';
+    if (appContainer) appContainer.style.display = 'none';
+
+    this.updateSignInUI(false);
+    this.updateCloudStatus(false, 'Drive: Sign In Required');
+  },
+
+  showAuthenticatedApp() {
+    this.isAuthenticated = true;
+
+    // If no orders or if orders only contain legacy outdated seed dates, initialize/refresh seed database
+    const hasCurrentDates = this.orders.some(o => (o.pickupDate || '').slice(0, 4) === String(new Date().getFullYear()));
+    if (this.orders.length === 0 || !hasCurrentDates) {
+      this.seedDatabase();
+    }
+
+    const loadingOverlay = document.getElementById('auth-loading-overlay');
+    const authOverlay = document.getElementById('auth-overlay');
+    const appContainer = document.getElementById('app-main-container');
+
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
+    if (authOverlay) authOverlay.style.display = 'none';
+    if (appContainer) appContainer.style.display = 'flex';
+
+    this.renderNotifications();
+    this.switchTab(this.activeTab || 'dashboard');
+  },
+
+  clearUIContainers() {
+    const textIds = [
+      'today-orders-val', 'today-sales-val', 'today-expenses-val', 'today-profit-val',
+      'pending-orders-val', 'payments-due-val', 'expenses-total-summary',
+      'rep-metric-1-value', 'rep-metric-2-value', 'rep-metric-3-value', 'rep-metric-4-value'
+    ];
+    textIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '$0.00';
+    });
+
+    const htmlIds = [
+      'dashboard-orders-table-body', 'dashboard-recent-expenses', 'dashboard-top-products',
+      'orders-table-body', 'expenses-table-body', 'customers-table-body',
+      'inventory-table-body', 'payments-table-body'
+    ];
+    htmlIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+
+    if (this.charts.salesOverview) { this.charts.salesOverview.destroy(); this.charts.salesOverview = null; }
+    if (this.charts.expenseSummary) { this.charts.expenseSummary.destroy(); this.charts.expenseSummary = null; }
+    if (this.charts.reportsMain) { this.charts.reportsMain.destroy(); this.charts.reportsMain = null; }
   },
 
   _getTokenClient() {
@@ -151,6 +226,7 @@ const app = {
           if (tokenResponse.error) {
             console.warn('Google OAuth error:', tokenResponse.error);
             this.updateCloudStatus(false, 'Drive: Auth Failed');
+            this.showAuthScreen();
             return;
           }
           this.accessToken = tokenResponse.access_token;
@@ -177,21 +253,25 @@ const app = {
 
   handleSignOut() {
     if (this.accessToken) {
-      google.accounts.oauth2.revoke(this.accessToken, () => { });
+      try { google.accounts.oauth2.revoke(this.accessToken, () => { }); } catch(e) {}
     }
-    this.accessToken = null;
-    this.driveFileId = null;
-    this.tokenClient = null;
+    // Wipe local cache & session tokens completely on sign out
     localStorage.removeItem('hos_drive_token');
-    this.updateSignInUI(false);
-    this.updateCloudStatus(false, 'Drive: Signed Out');
+    localStorage.removeItem('hos_orders');
+    localStorage.removeItem('hos_expenses');
+    localStorage.removeItem('hos_customers');
+    localStorage.removeItem('hos_inventory');
+    localStorage.removeItem('hos_expense_categories');
+    localStorage.removeItem('hos_inventory_categories');
+    localStorage.removeItem('hos_recipes');
+    localStorage.removeItem('hos_settings');
+
+    this.showAuthScreen();
   },
 
   updateSignInUI(isSignedIn) {
-    // Header buttons
     const signInBtn = document.getElementById('btn-google-signin');
     const signOutBtn = document.getElementById('btn-google-signout');
-    // Settings page buttons
     const settingsSignIn = document.getElementById('btn-google-signin-settings');
     const settingsSyncNow = document.getElementById('btn-drive-sync-now');
     const settingsReload = document.getElementById('btn-drive-reload');
@@ -217,11 +297,13 @@ const app = {
   },
 
   async loadFromDrive() {
-    if (!this.accessToken) return;
+    if (!this.accessToken) {
+      this.showAuthScreen();
+      return;
+    }
     try {
       this.updateCloudStatus(false, 'Drive: Loading...');
 
-      // Search for existing data file in app's private folder
       const listRes = await fetch(
         `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'${this.DRIVE_FILE_NAME}'&fields=files(id%2Cname)`,
         { headers: { Authorization: `Bearer ${this.accessToken}` } }
@@ -234,7 +316,6 @@ const app = {
       if (listData.files && listData.files.length > 0) {
         this.driveFileId = listData.files[0].id;
 
-        // Download file content
         const fileRes = await fetch(
           `https://www.googleapis.com/drive/v3/files/${this.driveFileId}?alt=media`,
           { headers: { Authorization: `Bearer ${this.accessToken}` } }
@@ -244,35 +325,47 @@ const app = {
 
         const data = await fileRes.json();
 
-        // Merge Drive data into app state
-        if (data.orders) this.orders = data.orders;
-        if (data.expenses) this.expenses = data.expenses;
-        if (data.customers) this.customers = data.customers;
-        if (data.inventory) this.inventory = data.inventory;
-        if (data.expenseCategories) this.expenseCategories = data.expenseCategories;
-        if (data.inventoryCategories) this.inventoryCategories = data.inventoryCategories;
-        if (data.recipes) this.recipes = data.recipes;
-        if (data.settings) this.settings = data.settings;
+        // Merge Drive data into authenticated state
+        this.orders = data.orders || [];
+        this.expenses = data.expenses || [];
+        this.customers = data.customers || [];
+        this.inventory = data.inventory || [];
+        this.expenseCategories = data.expenseCategories || ['Ingredients', 'Packaging', 'Utilities', 'Marketing', 'Delivery', 'Equipment', 'Rent', 'Others'];
+        this.inventoryCategories = data.inventoryCategories || ['Ingredients', 'Packaging', 'Decorations', 'Tools'];
+        this.recipes = data.recipes || [];
+        this.settings = data.settings || {};
 
-        // Update localStorage cache & refresh UI
         this.saveState();
-        this.refreshActiveTabTable();
-        if (this.activeTab === 'dashboard') this.renderDashboard();
-
         this.updateCloudStatus(true, 'Drive: Live ✓');
+        this.showAuthenticatedApp();
       } else {
-        // No file yet — push current local data to Drive for the first time
+        // First-time user on Drive
+        this.orders = [];
+        this.expenses = [];
+        this.customers = [];
+        this.inventory = [];
+        this.expenseCategories = ['Ingredients', 'Packaging', 'Utilities', 'Marketing', 'Delivery', 'Equipment', 'Rent', 'Others'];
+        this.inventoryCategories = ['Ingredients', 'Packaging', 'Decorations', 'Tools'];
+        this.recipes = [];
+        this.settings = {};
+
         await this.saveToDriveNow();
+        this.updateCloudStatus(true, 'Drive: Live ✓');
+        this.showAuthenticatedApp();
       }
     } catch (err) {
       console.warn('Drive load error:', err);
       if (err.status === 401) {
-        this.accessToken = null;
         localStorage.removeItem('hos_drive_token');
-        this.updateSignInUI(false);
-        this.updateCloudStatus(false, 'Drive: Session Expired — Sign In Again');
+        this.showAuthScreen();
       } else {
-        this.updateCloudStatus(false, 'Drive: Sync Error (using local cache)');
+        this.loadState();
+        if (this.orders.length > 0 || this.expenses.length > 0) {
+          this.updateCloudStatus(false, 'Drive: Sync Error (using local cache)');
+          this.showAuthenticatedApp();
+        } else {
+          this.showAuthScreen();
+        }
       }
     }
   },
@@ -363,6 +456,20 @@ const app = {
 
   // Seed default data matching user's screenshots
   seedDatabase() {
+    // Dynamic date helper relative to current date (today)
+    const now = new Date();
+    const relativeISO = (offsetDays, hour = 12) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + offsetDays);
+      d.setHours(hour, 0, 0, 0);
+      return d.toISOString().slice(0, 16);
+    };
+    const relativeDateOnly = (offsetDays) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + offsetDays);
+      return d.toISOString().slice(0, 10);
+    };
+
     // Categories
     this.expenseCategories = ['Ingredients', 'Packaging', 'Utilities', 'Marketing', 'Delivery', 'Rent'];
     this.inventoryCategories = ['Ingredients', 'Packaging', 'Equipment', 'Others'];
@@ -379,23 +486,22 @@ const app = {
 
     // Customers
     this.customers = [
-      { id: 'CUST-1', name: 'Sarah Johnson', phone: '(416) 555-1234', email: 'sarah@gmail.com', totalOrders: 5, totalSpent: 450.00, lastOrder: '2025-07-31' },
-      { id: 'CUST-2', name: 'Emily Davis', phone: '(647) 555-5678', email: 'emily@gmail.com', totalOrders: 3, totalSpent: 280.00, lastOrder: '2025-07-31' },
-      { id: 'CUST-3', name: 'Michael Lee', phone: '(647) 555-9012', email: 'michael@gmail.com', totalOrders: 4, totalSpent: 320.00, lastOrder: '2025-07-31' },
-      { id: 'CUST-4', name: 'Priya Sharma', phone: '(416) 555-3456', email: 'priya@gmail.com', totalOrders: 6, totalSpent: 560.00, lastOrder: '2025-07-31' },
-      { id: 'CUST-5', name: 'David Wilson', phone: '(647) 555-7890', email: 'david@gmail.com', totalOrders: 2, totalSpent: 90.00, lastOrder: '2025-07-31' }
+      { id: 'CUST-1', name: 'Sarah Johnson', phone: '(416) 555-1234', email: 'sarah@gmail.com', totalOrders: 5, totalSpent: 450.00, lastOrder: relativeDateOnly(0) },
+      { id: 'CUST-2', name: 'Emily Davis', phone: '(647) 555-5678', email: 'emily@gmail.com', totalOrders: 3, totalSpent: 280.00, lastOrder: relativeDateOnly(0) },
+      { id: 'CUST-3', name: 'Michael Lee', phone: '(647) 555-9012', email: 'michael@gmail.com', totalOrders: 4, totalSpent: 320.00, lastOrder: relativeDateOnly(-1) },
+      { id: 'CUST-4', name: 'Priya Sharma', phone: '(416) 555-3456', email: 'priya@gmail.com', totalOrders: 6, totalSpent: 560.00, lastOrder: relativeDateOnly(-2) },
+      { id: 'CUST-5', name: 'David Wilson', phone: '(647) 555-7890', email: 'david@gmail.com', totalOrders: 2, totalSpent: 90.00, lastOrder: relativeDateOnly(-3) }
     ];
 
-    // Orders
-    // Set some dates relative to current date (July 31, 2025)
+    // Orders relative to current date (today)
     this.orders = [
       {
-        id: 'HS-2025-071',
+        id: 'HS-2026-071',
         customerName: 'Sarah Johnson',
         customerPhone: '(416) 555-1234',
         customerEmail: 'sarah@gmail.com',
         items: 'Floral Cupcakes (12) - Vanilla',
-        pickupDate: '2025-07-31T12:00',
+        pickupDate: relativeISO(0, 12),
         advance: 30, remaining: 35, total: 65,
         payments: ['Deposit paid-Interac', 'Total paid-Interac'],
         platform: 'Instagram',
@@ -403,12 +509,12 @@ const app = {
         notes: 'Vanilla flavor, light pink icing.'
       },
       {
-        id: 'HS-2025-072',
+        id: 'HS-2026-072',
         customerName: 'Emily Davis',
         customerPhone: '(647) 555-5678',
         customerEmail: 'emily@gmail.com',
         items: 'Birthday Cake (2.5kg) - Chocolate',
-        pickupDate: '2025-07-31T15:00',
+        pickupDate: relativeISO(0, 15),
         advance: 60, remaining: 60, total: 120,
         payments: ['Deposit paid-Cash'],
         platform: 'Facebook-HOS',
@@ -416,12 +522,12 @@ const app = {
         notes: 'Write "Happy 10th Birthday Chloe!" on top.'
       },
       {
-        id: 'HS-2025-073',
+        id: 'HS-2026-073',
         customerName: 'Michael Lee',
         customerPhone: '(647) 555-9012',
         customerEmail: 'michael@gmail.com',
         items: 'Cookies (24 pcs) - Chocolate Chip',
-        pickupDate: '2025-07-31T16:00',
+        pickupDate: relativeISO(0, 16),
         advance: 40, remaining: 0, total: 40,
         payments: ['Total paid-Cash'],
         platform: 'Whatsapp',
@@ -429,12 +535,12 @@ const app = {
         notes: 'Wrap in luxury ribbons.'
       },
       {
-        id: 'HS-2025-074',
+        id: 'HS-2026-074',
         customerName: 'Priya Sharma',
         customerPhone: '(416) 555-3456',
         customerEmail: 'priya@gmail.com',
         items: 'Floral Cupcake Bouquet - Pink Theme',
-        pickupDate: '2025-08-01T11:00',
+        pickupDate: relativeISO(1, 11),
         advance: 35, remaining: 40, total: 75,
         payments: ['Deposit paid-Interac'],
         platform: 'Marketplace-HOS',
@@ -442,27 +548,26 @@ const app = {
         notes: 'Bouquet arrangement of cupcakes.'
       },
       {
-        id: 'HS-2025-075',
+        id: 'HS-2026-075',
         customerName: 'David Wilson',
         customerPhone: '(647) 555-7890',
         customerEmail: 'david@gmail.com',
         items: 'Brownies (16 pcs) - Fudgy',
-        pickupDate: '2025-08-01T14:00',
+        pickupDate: relativeISO(2, 14),
         advance: 0, remaining: 45, total: 45,
         payments: [],
         platform: 'Marketplace-Arzu',
         orderStatus: 'Inquiry',
         notes: 'Inquiry only, draft order.'
       },
-      // Added older completed orders to bootstrap reports stats
-      { id: 'HB-2025-060', customerName: 'Sarah Johnson', customerPhone: '(416) 555-1234', customerEmail: 'sarah@gmail.com', items: 'Custom Cupcakes x6', pickupDate: '2025-07-28T10:00', advance: 50, remaining: 0, total: 50, payments: ['Total paid-Cash'], platform: 'Instagram', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-061', customerName: 'Emily Davis', customerPhone: '(647) 555-5678', customerEmail: 'emily@gmail.com', items: 'Red Velvet Cake', pickupDate: '2025-07-25T11:00', advance: 90, remaining: 0, total: 90, payments: ['Total paid-Interac'], platform: 'Facebook-HOS', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-062', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Rose Cupcakes x12', pickupDate: '2025-07-24T12:00', advance: 80, remaining: 0, total: 80, payments: ['Total paid-Interac'], platform: 'Marketplace-HOS', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-063', customerName: 'Michael Lee', customerPhone: '(647) 555-9012', customerEmail: 'michael@gmail.com', items: 'Chocolate Brownies x12', pickupDate: '2025-07-23T14:00', advance: 35, remaining: 0, total: 35, payments: ['Total paid-Cash'], platform: 'Whatsapp', orderStatus: 'Completed', notes: '' },
-      { id: 'HB-2025-064', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Birthday Cake 1.5kg', pickupDate: '2025-07-20T10:00', advance: 75, remaining: 0, total: 75, payments: ['Total paid-Cash'], platform: 'Facebook-Arzu', orderStatus: 'Completed', notes: '' }
+      { id: 'HB-2026-060', customerName: 'Sarah Johnson', customerPhone: '(416) 555-1234', customerEmail: 'sarah@gmail.com', items: 'Custom Cupcakes x6', pickupDate: relativeISO(-1, 10), advance: 50, remaining: 0, total: 50, payments: ['Total paid-Cash'], platform: 'Instagram', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2026-061', customerName: 'Emily Davis', customerPhone: '(647) 555-5678', customerEmail: 'emily@gmail.com', items: 'Red Velvet Cake', pickupDate: relativeISO(-2, 11), advance: 90, remaining: 0, total: 90, payments: ['Total paid-Interac'], platform: 'Facebook-HOS', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2026-062', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Rose Cupcakes x12', pickupDate: relativeISO(-3, 12), advance: 80, remaining: 0, total: 80, payments: ['Total paid-Interac'], platform: 'Marketplace-HOS', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2026-063', customerName: 'Michael Lee', customerPhone: '(647) 555-9012', customerEmail: 'michael@gmail.com', items: 'Chocolate Brownies x12', pickupDate: relativeISO(-4, 14), advance: 35, remaining: 0, total: 35, payments: ['Total paid-Cash'], platform: 'Whatsapp', orderStatus: 'Completed', notes: '' },
+      { id: 'HB-2026-064', customerName: 'Priya Sharma', customerPhone: '(416) 555-3456', customerEmail: 'priya@gmail.com', items: 'Birthday Cake 1.5kg', pickupDate: relativeISO(-5, 10), advance: 75, remaining: 0, total: 75, payments: ['Total paid-Cash'], platform: 'Facebook-Arzu', orderStatus: 'Completed', notes: '' }
     ];
 
-    // Seed more orders for calendar/reporting (adding up to 28 total orders as in donut chart)
+    // Seed more orders across recent days
     const platforms = ['Instagram', 'Facebook-HOS', 'Whatsapp', 'Marketplace-HOS', 'Marketplace-Arzu', 'Facebook-Arzu'];
     for (let i = 1; i <= 18; i++) {
       const customersList = this.customers;
@@ -472,12 +577,11 @@ const app = {
       const status = ['Completed', 'Completed', 'Completed', 'Confirmed', 'In Progress', 'Ready'][Math.floor(Math.random() * 6)];
       const pmts = status === 'Completed' ? ['Total paid-Cash'] : (Math.random() > 0.5 ? ['Deposit paid-Interac'] : []);
 
-      // Random dates in July 2025
-      const day = Math.floor(Math.random() * 28) + 1;
-      const dateStr = `2025-07-${day < 10 ? '0' + day : day}T12:00`;
+      const dayOffset = -Math.floor(Math.random() * 25);
+      const dateStr = relativeISO(dayOffset, 12);
 
       this.orders.push({
-        id: `HS-2025-0${5 + i}`,
+        id: `HS-2026-0${5 + i}`,
         customerName: cust.name,
         customerPhone: cust.phone,
         customerEmail: cust.email,
@@ -493,15 +597,15 @@ const app = {
       });
     }
 
-    // Expenses
+    // Expenses relative to current date
     this.expenses = [
-      { id: 'EXP-1', date: '2025-07-31', category: 'Ingredients', item: 'Flour (10kg)', amount: 35.00, method: 'Cash', notes: 'Wholesale Baker supplier' },
-      { id: 'EXP-2', date: '2025-07-31', category: 'Ingredients', item: 'Butter (2kg)', amount: 42.50, method: 'Cash', notes: 'Local store purchase' },
-      { id: 'EXP-3', date: '2025-07-31', category: 'Packaging', item: 'Cake Boxes (10)', amount: 18.00, method: 'Cash', notes: 'Supplier delivery' },
-      { id: 'EXP-4', date: '2025-07-31', category: 'Utilities', item: 'Electricity Bill', amount: 85.75, method: 'Online', notes: 'June bill' },
-      { id: 'EXP-5', date: '2025-07-31', category: 'Marketing', item: 'Instagram Ads', amount: 40.00, method: 'Card', notes: 'Promo campaign' },
-      { id: 'EXP-6', date: '2025-07-30', category: 'Ingredients', item: 'Sugar (5kg)', amount: 22.00, method: 'Cash', notes: 'Store run' },
-      { id: 'EXP-7', date: '2025-07-30', category: 'Delivery', item: 'Fuel', amount: 25.00, method: 'Cash', notes: 'Delivery van fill' }
+      { id: 'EXP-1', date: relativeDateOnly(0), category: 'Ingredients', item: 'Flour (10kg)', amount: 35.00, method: 'Cash', notes: 'Wholesale Baker supplier' },
+      { id: 'EXP-2', date: relativeDateOnly(0), category: 'Ingredients', item: 'Butter (2kg)', amount: 42.50, method: 'Cash', notes: 'Local store purchase' },
+      { id: 'EXP-3', date: relativeDateOnly(-1), category: 'Packaging', item: 'Cake Boxes (10)', amount: 18.00, method: 'Cash', notes: 'Supplier delivery' },
+      { id: 'EXP-4', date: relativeDateOnly(-2), category: 'Utilities', item: 'Electricity Bill', amount: 85.75, method: 'Online', notes: 'Monthly bill' },
+      { id: 'EXP-5', date: relativeDateOnly(-3), category: 'Marketing', item: 'Instagram Ads', amount: 40.00, method: 'Card', notes: 'Promo campaign' },
+      { id: 'EXP-6', date: relativeDateOnly(-4), category: 'Ingredients', item: 'Sugar (5kg)', amount: 22.00, method: 'Cash', notes: 'Store run' },
+      { id: 'EXP-7', date: relativeDateOnly(-5), category: 'Delivery', item: 'Fuel', amount: 25.00, method: 'Cash', notes: 'Delivery van fill' }
     ];
 
     // Inventory
@@ -575,7 +679,6 @@ const app = {
       });
     }
 
-
     // Theme Toggle
     document.getElementById('theme-switcher-btn').addEventListener('click', () => {
       const currentTheme = document.documentElement.getAttribute('data-theme');
@@ -586,27 +689,65 @@ const app = {
       const themeText = newTheme === 'light' ? 'Chic Rose' : 'Cocoa Gold';
       document.querySelector('.theme-text').textContent = themeText;
 
-      // Re-render charts to adjust grid lines & text colors
       this.renderCharts();
     });
 
     // Notifications Click Trigger
     const bellTrigger = document.getElementById('notification-trigger');
     const bellDropdown = document.getElementById('notification-menu');
-    bellTrigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      bellDropdown.classList.toggle('active');
-    });
+    if (bellTrigger && bellDropdown) {
+      bellTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        bellDropdown.classList.toggle('active');
+      });
 
-    document.addEventListener('click', () => {
-      bellDropdown.classList.remove('active');
-    });
+      document.addEventListener('click', () => {
+        bellDropdown.classList.remove('active');
+      });
+    }
 
-    // Period Selectors in Header
-    document.getElementById('dashboard-period-select').addEventListener('change', (e) => {
-      this.dashboardPeriod = e.target.value;
+    // Dashboard Period Select & Date Range Handlers
+    const dashPeriodSelect = document.getElementById('dashboard-period-select');
+    const dashDateStart = document.getElementById('dashboard-date-start');
+    const dashDateEnd = document.getElementById('dashboard-date-end');
+
+    if (dashPeriodSelect) {
+      dashPeriodSelect.addEventListener('change', (e) => {
+        const p = e.target.value;
+        this.dashboardPeriod = p;
+        if (p === 'all') {
+          dashDateStart.value = '';
+          dashDateEnd.value = '';
+          this.dashboardDateStart = '';
+          this.dashboardDateEnd = '';
+        } else if (p !== 'custom') {
+          const range = this.getPeriodDates(p);
+          dashDateStart.value = range.start;
+          dashDateEnd.value = range.end;
+          this.dashboardDateStart = range.start;
+          this.dashboardDateEnd = range.end;
+        }
+        this.renderDashboard();
+      });
+    }
+
+    const onDashDateChange = () => {
+      if (dashPeriodSelect) dashPeriodSelect.value = 'custom';
+      this.dashboardPeriod = 'custom';
+      const s = dashDateStart.value;
+      const e = dashDateEnd.value;
+      if (s && e && s > e) {
+        alert('Start date cannot be after End date.');
+        dashDateEnd.value = '';
+        return;
+      }
+      this.dashboardDateStart = s;
+      this.dashboardDateEnd = e;
       this.renderDashboard();
-    });
+    };
+
+    if (dashDateStart) dashDateStart.addEventListener('change', onDashDateChange);
+    if (dashDateEnd) dashDateEnd.addEventListener('change', onDashDateChange);
 
     // Dashboard Selectors inside Charts
     document.getElementById('sales-chart-period-select').addEventListener('change', () => {
@@ -621,35 +762,35 @@ const app = {
       this.renderTopProductsList();
     });
 
-    // Detail Report Open Actions when clicking Metric Cards
+    // Detail Report Open Actions when clicking Metric Cards (passes Date Range + KPI Filters)
     document.getElementById('card-sales-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('reports', { reportType: 'sales' });
+      this.switchTab('orders', { dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Sales' });
     });
 
     document.getElementById('card-expenses-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('reports', { reportType: 'expenses' });
+      this.switchTab('expenses', { dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Expenses' });
     });
 
     document.getElementById('card-profit-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('reports', { reportType: 'profit' });
+      this.switchTab('reports', { reportType: 'profit', dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Profit' });
     });
 
     document.getElementById('card-orders-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('orders');
+      this.switchTab('orders', { dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Orders' });
     });
 
     document.getElementById('card-pending-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('orders', { status: 'Pending' });
+      this.switchTab('orders', { status: 'Pending', dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Pending Orders' });
     });
 
     document.getElementById('card-due-click-target').addEventListener('click', (e) => {
       e.preventDefault();
-      this.switchTab('orders', { payment: 'Unpaid' });
+      this.switchTab('payments', { payment: 'Unpaid', dateStart: this.dashboardDateStart, dateEnd: this.dashboardDateEnd, fromKPI: 'Payments Due' });
     });
 
     // Buttons bindings on Dashboard
@@ -658,37 +799,159 @@ const app = {
     document.getElementById('btn-dash-cal-prev').addEventListener('click', () => this.dashboardCalendarPrevMonth());
     document.getElementById('btn-dash-cal-next').addEventListener('click', () => this.dashboardCalendarNextMonth());
 
-    // Orders Filter Handlers
-    document.getElementById('order-search-input').addEventListener('input', () => {
+    // Orders Filter & Sorting Handlers
+    const reRenderOrders = () => {
       this.pagination.orders.current = 1;
       this.renderOrdersTable();
-    });
-    document.getElementById('order-status-filter').addEventListener('change', () => {
-      this.pagination.orders.current = 1;
-      this.renderOrdersTable();
-    });
-    document.getElementById('order-payment-filter').addEventListener('change', () => {
-      this.pagination.orders.current = 1;
-      this.renderOrdersTable();
+    };
+
+    document.getElementById('order-search-input')?.addEventListener('input', reRenderOrders);
+    document.getElementById('order-status-filter')?.addEventListener('change', reRenderOrders);
+    document.getElementById('order-payment-filter')?.addEventListener('change', reRenderOrders);
+    document.getElementById('order-payment-method-filter')?.addEventListener('change', reRenderOrders);
+    document.getElementById('order-date-start')?.addEventListener('change', reRenderOrders);
+    document.getElementById('order-date-end')?.addEventListener('change', reRenderOrders);
+
+    const orderColFilters = [
+      'col-filter-order-id', 'col-filter-order-customer', 'col-filter-order-items',
+      'col-filter-order-advance-min', 'col-filter-order-remaining-min',
+      'col-filter-order-total-min', 'col-filter-order-platform'
+    ];
+    orderColFilters.forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.addEventListener('input', reRenderOrders);
     });
 
-    // Expenses Filter Handlers
-    document.getElementById('expense-search-input').addEventListener('input', () => {
+    // Orders Column Sort Headers
+    document.querySelectorAll('#orders-table .sortable-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.getAttribute('data-sort-col');
+        if (this.ordersSort.col === col) {
+          this.ordersSort.dir = this.ordersSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.ordersSort.col = col;
+          this.ordersSort.dir = 'asc';
+        }
+        this.renderOrdersTable();
+      });
+    });
+
+    // Clear Orders Filters
+    const btnClearOrders = document.getElementById('btn-clear-order-filters');
+    if (btnClearOrders) {
+      btnClearOrders.addEventListener('click', () => {
+        if (document.getElementById('order-search-input')) document.getElementById('order-search-input').value = '';
+        if (document.getElementById('order-status-filter')) document.getElementById('order-status-filter').value = 'all';
+        if (document.getElementById('order-payment-filter')) document.getElementById('order-payment-filter').value = 'all';
+        if (document.getElementById('order-payment-method-filter')) document.getElementById('order-payment-method-filter').value = 'all';
+        if (document.getElementById('order-date-start')) document.getElementById('order-date-start').value = '';
+        if (document.getElementById('order-date-end')) document.getElementById('order-date-end').value = '';
+        orderColFilters.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        reRenderOrders();
+      });
+    }
+
+    // Expenses Filter & Sorting Handlers
+    const reRenderExpenses = () => {
       this.pagination.expenses.current = 1;
       this.renderExpensesTable();
+    };
+
+    document.getElementById('expense-search-input').addEventListener('input', reRenderExpenses);
+    document.getElementById('expense-category-filter').addEventListener('change', reRenderExpenses);
+    document.getElementById('expense-date-start').addEventListener('change', reRenderExpenses);
+    document.getElementById('expense-date-end').addEventListener('change', reRenderExpenses);
+
+    const expColFilters = ['col-filter-exp-item', 'col-filter-exp-amount-min', 'col-filter-exp-method', 'col-filter-exp-notes'];
+    expColFilters.forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.addEventListener('input', reRenderExpenses);
     });
-    document.getElementById('expense-category-filter').addEventListener('change', () => {
-      this.pagination.expenses.current = 1;
-      this.renderExpensesTable();
+
+    // Expenses Column Sort Headers
+    document.querySelectorAll('#expenses-table .sortable-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.getAttribute('data-sort-col');
+        if (this.expensesSort.col === col) {
+          this.expensesSort.dir = this.expensesSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.expensesSort.col = col;
+          this.expensesSort.dir = 'asc';
+        }
+        this.renderExpensesTable();
+      });
     });
-    document.getElementById('expense-date-start').addEventListener('change', () => {
-      this.pagination.expenses.current = 1;
-      this.renderExpensesTable();
+
+    // Clear Expenses Filters
+    const btnClearExpenses = document.getElementById('btn-clear-expense-filters');
+    if (btnClearExpenses) {
+      btnClearExpenses.addEventListener('click', () => {
+        document.getElementById('expense-search-input').value = '';
+        document.getElementById('expense-category-filter').value = 'all';
+        document.getElementById('expense-date-start').value = '';
+        document.getElementById('expense-date-end').value = '';
+        expColFilters.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        reRenderExpenses();
+      });
+    }
+
+    // Payments Filter & Sorting Handlers
+    const reRenderPayments = () => {
+      this.pagination.payments.current = 1;
+      this.renderPaymentsTable();
+    };
+
+    document.getElementById('payment-search-input')?.addEventListener('input', reRenderPayments);
+    document.getElementById('payment-status-filter')?.addEventListener('change', reRenderPayments);
+    document.getElementById('payment-method-filter')?.addEventListener('change', reRenderPayments);
+    document.getElementById('payment-date-start')?.addEventListener('change', reRenderPayments);
+    document.getElementById('payment-date-end')?.addEventListener('change', reRenderPayments);
+
+    const payColFilters = [
+      'col-filter-pay-id', 'col-filter-pay-customer', 'col-filter-pay-advance-min',
+      'col-filter-pay-remaining-min', 'col-filter-pay-total-min', 'col-filter-pay-notes'
+    ];
+    payColFilters.forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.addEventListener('input', reRenderPayments);
     });
-    document.getElementById('expense-date-end').addEventListener('change', () => {
-      this.pagination.expenses.current = 1;
-      this.renderExpensesTable();
+
+    // Payments Column Sort Headers
+    document.querySelectorAll('#payments-table .sortable-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.getAttribute('data-sort-col');
+        if (this.paymentsSort.col === col) {
+          this.paymentsSort.dir = this.paymentsSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.paymentsSort.col = col;
+          this.paymentsSort.dir = 'asc';
+        }
+        this.renderPaymentsTable();
+      });
     });
+
+    // Clear Payments Filters
+    const btnClearPayments = document.getElementById('btn-clear-payment-filters');
+    if (btnClearPayments) {
+      btnClearPayments.addEventListener('click', () => {
+        if (document.getElementById('payment-search-input')) document.getElementById('payment-search-input').value = '';
+        if (document.getElementById('payment-status-filter')) document.getElementById('payment-status-filter').value = 'all';
+        if (document.getElementById('payment-method-filter')) document.getElementById('payment-method-filter').value = 'all';
+        if (document.getElementById('payment-date-start')) document.getElementById('payment-date-start').value = '';
+        if (document.getElementById('payment-date-end')) document.getElementById('payment-date-end').value = '';
+        payColFilters.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        reRenderPayments();
+      });
+    }
 
     // Customers Filter Handlers
     document.getElementById('customer-search-input').addEventListener('input', () => {
@@ -704,16 +967,6 @@ const app = {
     document.getElementById('inventory-category-filter').addEventListener('change', () => {
       this.pagination.inventory.current = 1;
       this.renderInventoryTable();
-    });
-
-    // Payments Filter Handlers
-    document.getElementById('payment-search-input').addEventListener('input', () => {
-      this.pagination.payments.current = 1;
-      this.renderPaymentsTable();
-    });
-    document.getElementById('payment-status-filter').addEventListener('change', () => {
-      this.pagination.payments.current = 1;
-      this.renderPaymentsTable();
     });
 
     // Modal Forms Submissions
@@ -736,9 +989,48 @@ const app = {
       });
     });
 
-    // Reports date handlers
-    document.getElementById('report-date-start').addEventListener('change', () => this.renderReportsMain());
-    document.getElementById('report-date-end').addEventListener('change', () => this.renderReportsMain());
+    // Reports date & period handlers
+    const reportPeriodSelect = document.getElementById('report-period-select');
+    const reportDateStart = document.getElementById('report-date-start');
+    const reportDateEnd = document.getElementById('report-date-end');
+
+    if (reportPeriodSelect) {
+      reportPeriodSelect.addEventListener('change', (e) => {
+        const p = e.target.value;
+        if (p === 'all') {
+          if (reportDateStart) reportDateStart.value = '';
+          if (reportDateEnd) reportDateEnd.value = '';
+        } else if (p !== 'custom') {
+          const range = this.getPeriodDates(p);
+          if (reportDateStart) reportDateStart.value = range.start;
+          if (reportDateEnd) reportDateEnd.value = range.end;
+        }
+        this.renderReportsMain();
+      });
+    }
+
+    const onReportDateChange = () => {
+      if (reportPeriodSelect) reportPeriodSelect.value = 'custom';
+      this.renderReportsMain();
+    };
+
+    if (reportDateStart) reportDateStart.addEventListener('change', onReportDateChange);
+    if (reportDateEnd) reportDateEnd.addEventListener('change', onReportDateChange);
+
+    const btnClearReport = document.getElementById('btn-clear-report-filters');
+    if (btnClearReport) {
+      btnClearReport.addEventListener('click', () => {
+        if (reportPeriodSelect) reportPeriodSelect.value = 'all';
+        if (reportDateStart) reportDateStart.value = '';
+        if (reportDateEnd) reportDateEnd.value = '';
+        this.renderReportsMain();
+      });
+    }
+
+    const btnExportReport = document.getElementById('btn-export-report');
+    if (btnExportReport) {
+      btnExportReport.addEventListener('click', () => this.exportReportData());
+    }
 
     // Settings sub-tab switches
     document.querySelectorAll('.settings-tab-item').forEach(item => {
@@ -816,26 +1108,32 @@ const app = {
     document.getElementById('btn-import-orders-trigger').addEventListener('click', () => this.openImportModal('orders'));
     document.getElementById('btn-import-expenses-trigger').addEventListener('click', () => this.openImportModal('expenses'));
 
-    // Import Modal Event Listeners
     this.setupImportModalListeners();
+  },
 
-    // Top Calendar Logo click handler (shows toast popup with full date)
-    const datePickerEl = document.querySelector('.header-date-picker');
-    if (datePickerEl) {
-      datePickerEl.addEventListener('click', () => {
-        const fullDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-        let toast = document.getElementById('header-date-toast');
-        if (!toast) {
-          toast = document.createElement('div');
-          toast.id = 'header-date-toast';
-          toast.className = 'header-date-toast';
-          document.body.appendChild(toast);
-        }
-        toast.textContent = `📅 Today: ${fullDate}`;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3500);
-      });
+  getPeriodDates(period) {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    if (period === 'today') {
+      return { start: todayStr, end: todayStr };
+    } else if (period === 'week') {
+      const dayOfWeek = now.getDay();
+      const distToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+      const mon = new Date(now);
+      mon.setDate(now.getDate() + distToMon);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      return { start: mon.toISOString().slice(0, 10), end: sun.toISOString().slice(0, 10) };
+    } else if (period === 'month') {
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+      return { start: `${y}-${m}-01`, end: `${y}-${m}-${String(lastDay).padStart(2, '0')}` };
+    } else if (period === 'year') {
+      const y = now.getFullYear();
+      return { start: `${y}-01-01`, end: `${y}-12-31` };
     }
+    return { start: '', end: '' };
   },
 
   // Switch Tab Panels
@@ -876,18 +1174,19 @@ const app = {
     if (tabName === 'dashboard') {
       this.renderDashboard();
     } else if (tabName === 'orders') {
-      if (options.status) {
-        document.getElementById('order-status-filter').value = options.status;
-      }
-      if (options.payment) {
-        document.getElementById('order-payment-filter').value = options.payment;
-      }
+      if (options.dateStart !== undefined) document.getElementById('order-date-start').value = options.dateStart;
+      if (options.dateEnd !== undefined) document.getElementById('order-date-end').value = options.dateEnd;
+      if (options.status !== undefined) document.getElementById('order-status-filter').value = options.status;
+      if (options.payment !== undefined) document.getElementById('order-payment-filter').value = options.payment;
+      if (options.method !== undefined && document.getElementById('order-payment-method-filter')) document.getElementById('order-payment-method-filter').value = options.method;
       this.renderOrdersTable();
     } else if (tabName === 'calendar') {
       this.renderCalendar();
     } else if (tabName === 'customers') {
       this.renderCustomersTable();
     } else if (tabName === 'expenses') {
+      if (options.dateStart !== undefined) document.getElementById('expense-date-start').value = options.dateStart;
+      if (options.dateEnd !== undefined) document.getElementById('expense-date-end').value = options.dateEnd;
       this.populateCategoryDropdowns();
       this.renderExpensesTable();
     } else if (tabName === 'inventory') {
@@ -896,6 +1195,10 @@ const app = {
     } else if (tabName === 'recipes') {
       this.renderRecipesWorkspace();
     } else if (tabName === 'payments') {
+      if (options.dateStart !== undefined) document.getElementById('payment-date-start').value = options.dateStart;
+      if (options.dateEnd !== undefined) document.getElementById('payment-date-end').value = options.dateEnd;
+      if (options.payment !== undefined) document.getElementById('payment-status-filter').value = options.payment;
+      if (options.method !== undefined && document.getElementById('payment-method-filter')) document.getElementById('payment-method-filter').value = options.method;
       this.renderPaymentsTable();
     } else if (tabName === 'reports') {
       if (options.reportType) {
@@ -907,6 +1210,8 @@ const app = {
           }
         });
       }
+      if (options.dateStart !== undefined) document.getElementById('report-date-start').value = options.dateStart;
+      if (options.dateEnd !== undefined) document.getElementById('report-date-end').value = options.dateEnd;
       this.setupReportsDates();
       this.renderReportsMain();
     } else if (tabName === 'settings') {
@@ -984,12 +1289,12 @@ const app = {
       profitEl.classList.remove('text-danger');
     }
 
-    // Pending Orders count (Point-in-time metrics, not matching period)
-    const pendingOrdersCount = this.orders.filter(o => o.orderStatus === 'Confirmed' || o.orderStatus === 'In Progress' || o.orderStatus === 'Ready').length;
+    // Pending Orders count (within the selected period)
+    const pendingOrdersCount = orders.filter(o => o.orderStatus === 'Pending' || o.orderStatus === 'Confirmed' || o.orderStatus === 'In Progress' || o.orderStatus === 'Ready').length;
     document.getElementById('pending-orders-val').textContent = pendingOrdersCount;
 
-    // Payments Due — sum of remaining field for non-cancelled orders with unpaid balance
-    const dueAmount = this.orders
+    // Payments Due — sum of remaining field for non-cancelled orders with unpaid balance (within the selected period)
+    const dueAmount = orders
       .filter(o => o.orderStatus !== 'Cancelled')
       .reduce((sum, o) => {
         const rem = o.remaining ?? 0;
@@ -999,81 +1304,51 @@ const app = {
     document.getElementById('payments-due-val').textContent = `$${dueAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   },
 
-  // Helper: filter orders by period dynamically
+  // Helper: filter orders by period & date range dynamically
   getOrdersInPeriod(period) {
-    if (!period || period === 'all') {
+    let start = this.dashboardDateStart;
+    let end = this.dashboardDateEnd;
+
+    if ((!period || period === 'all') && !start && !end) {
       return this.orders.filter(o => o.orderStatus !== 'Cancelled');
     }
 
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-
-    const dayOfWeek = now.getDay();
-    const distToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-    const mon = new Date(now);
-    mon.setDate(now.getDate() + distToMon);
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-
-    const monStr = mon.toISOString().slice(0, 10);
-    const sunStr = sun.toISOString().slice(0, 10);
-
-    const monthStr = now.toISOString().slice(0, 7);
-    const yearStr = now.getFullYear().toString();
+    if (period && period !== 'custom' && period !== 'all' && (!start || !end)) {
+      const dates = this.getPeriodDates(period);
+      start = dates.start;
+      end = dates.end;
+    }
 
     return this.orders.filter(o => {
       if (o.orderStatus === 'Cancelled') return false;
       const dStr = (o.pickupDate || '').slice(0, 10);
-      if (!dStr) return true;
-
-      if (period === 'today') {
-        return dStr === todayStr || dStr === '2025-07-31';
-      } else if (period === 'week') {
-        return (dStr >= monStr && dStr <= sunStr) || (dStr >= '2025-07-28' && dStr <= '2025-08-03');
-      } else if (period === 'month') {
-        return dStr.startsWith(monthStr) || dStr.startsWith('2025-07');
-      } else if (period === 'year') {
-        return dStr.startsWith(yearStr) || dStr.startsWith('2025');
-      }
+      if (!dStr) return false;
+      if (start && dStr < start) return false;
+      if (end && dStr > end) return false;
       return true;
     });
   },
 
-  // Helper: filter expenses by period dynamically
+  // Helper: filter expenses by period & date range dynamically
   getExpensesInPeriod(period) {
-    if (!period || period === 'all') {
+    let start = this.dashboardDateStart;
+    let end = this.dashboardDateEnd;
+
+    if ((!period || period === 'all') && !start && !end) {
       return this.expenses;
     }
 
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-
-    const dayOfWeek = now.getDay();
-    const distToMon = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
-    const mon = new Date(now);
-    mon.setDate(now.getDate() + distToMon);
-    const sun = new Date(mon);
-    sun.setDate(mon.getDate() + 6);
-
-    const monStr = mon.toISOString().slice(0, 10);
-    const sunStr = sun.toISOString().slice(0, 10);
-
-    const monthStr = now.toISOString().slice(0, 7);
-    const yearStr = now.getFullYear().toString();
+    if (period && period !== 'custom' && period !== 'all' && (!start || !end)) {
+      const dates = this.getPeriodDates(period);
+      start = dates.start;
+      end = dates.end;
+    }
 
     return this.expenses.filter(e => {
       const dStr = (e.date || '').slice(0, 10);
-      if (!dStr) return true;
-
-      if (period === 'today') {
-        return dStr === todayStr || dStr === '2025-07-31';
-      } else if (period === 'week') {
-        return (dStr >= monStr && dStr <= sunStr) || (dStr >= '2025-07-28' && dStr <= '2025-08-03');
-      } else if (period === 'month') {
-        return dStr.startsWith(monthStr) || dStr.startsWith('2025-07');
-      } else if (period === 'year') {
-        return dStr.startsWith(yearStr) || dStr.startsWith('2025');
-      }
+      if (!dStr) return false;
+      if (start && dStr < start) return false;
+      if (end && dStr > end) return false;
       return true;
     });
   },
@@ -1082,7 +1357,7 @@ const app = {
   renderDashboardOrdersTable() {
     const tableTitle = document.getElementById('dashboard-orders-table-title');
     const period = this.dashboardPeriod;
-    const periodLabel = period === 'today' ? "Today" : (period === 'week' ? "This Week" : (period === 'month' ? "This Month" : (period === 'year' ? "This Year" : "All Time")));
+    const periodLabel = period === 'today' ? "Today" : (period === 'week' ? "This Week" : (period === 'month' ? "This Month" : (period === 'year' ? "This Year" : (period === 'custom' ? "Selected Range" : "All Time"))));
     tableTitle.textContent = `${periodLabel}'s Orders`;
 
     const orders = this.getOrdersInPeriod(period).sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
@@ -1090,12 +1365,12 @@ const app = {
     tbody.innerHTML = '';
 
     if (orders.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 30px;">No orders recorded in this period.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--color-text-muted); padding: 30px;">No orders recorded in this period.</td></tr>`;
       return;
     }
 
     orders.slice(0, 5).forEach(o => {
-      const initials = o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      const initials = o.customerName ? o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU';
       const timeStr = new Date(o.pickupDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
       const pymtDisplay = pymtList.length ? pymtList.map(p => `<span class="badge badge-info" style="font-size:0.58rem; padding:1px 5px; margin:1px;">${p}</span>`).join('') : '<span class="badge badge-danger" style="font-size:0.58rem; padding:1px 5px;">Unpaid</span>';
@@ -1109,15 +1384,15 @@ const app = {
               <div class="avatar-initials" style="width:26px; height:26px; font-size:0.65rem;">${initials}</div>
               <div class="customer-meta-info">
                 <span class="customer-name" style="font-size:0.8rem; font-weight:600;">${o.customerName}</span>
-                <span class="customer-phone" style="font-size:0.68rem;">${o.customerPhone}</span>
+                <span class="customer-phone" style="font-size:0.68rem;">${o.customerPhone || ''}</span>
               </div>
             </div>
           </td>
           <td style="font-size:0.8rem; max-width: 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${o.items}</td>
           <td style="font-size:0.8rem;">${timeStr}</td>
-          <td style="font-weight:600; font-size:0.8rem;">$${(o.advance ?? 0)}</td>
-          <td style="font-size:0.8rem;">$${(o.remaining ?? 0)}</td>
-          <td style="font-weight:600; font-size:0.8rem;">$${(o.total ?? o.amount ?? 0)}</td>
+          <td style="font-weight:600; font-size:0.8rem;">$${(o.advance ?? 0).toFixed(2)}</td>
+          <td style="font-size:0.8rem;">$${(o.remaining ?? 0).toFixed(2)}</td>
+          <td style="font-weight:600; font-size:0.8rem;">$${(o.total ?? o.amount ?? 0).toFixed(2)}</td>
           <td><span class="badge badge-${this.getStatusBadgeType(o.orderStatus)}" style="font-size:0.65rem; padding: 2px 8px;">${o.orderStatus}</span></td>
           <td>${pymtDisplay}</td>
           <td>${platformDisplay}</td>
@@ -1136,7 +1411,7 @@ const app = {
 
   // 2. Dashboard Recent Expenses List
   renderDashboardExpensesList() {
-    const expenses = this.expenses.slice(0, 5); // Just show the top 5 overall recent ones or filter
+    const expenses = this.getExpensesInPeriod(this.dashboardPeriod).slice(0, 5);
     const list = document.getElementById('dashboard-recent-expenses');
     list.innerHTML = '';
 
@@ -1162,338 +1437,37 @@ const app = {
     });
   },
 
-  // 3. Dashboard Mini Calendar
-  renderDashboardMiniCalendar() {
-    const miniCells = document.getElementById('dashboard-mini-calendar-cells');
-    miniCells.innerHTML = '';
+  // 3. Top Products List for Dashboard (Dynamic Calculation)
+  renderTopProductsList() {
+    const list = document.getElementById('dashboard-top-products');
+    if (!list) return;
+    list.innerHTML = '';
 
-    const year = this.miniCalDate.getFullYear();
-    const month = this.miniCalDate.getMonth();
+    const orders = this.getOrdersInPeriod(this.dashboardPeriod);
+    const productCounts = {};
 
-    // Month label (e.g. August 2025)
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    document.getElementById('dashboard-mini-calendar-month-year').textContent = `${monthNames[month]} ${year}`;
-
-    const firstDayIndex = new Date(year, month, 1).getDay();
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const prevLastDay = new Date(year, month, 0).getDate();
-
-    // Fill prev month days
-    for (let x = firstDayIndex; x > 0; x--) {
-      const prevDay = prevLastDay - x + 1;
-      const prevMonthIdx = month === 0 ? 11 : month - 1;
-      const prevYear = month === 0 ? year - 1 : year;
-
-      miniCells.appendChild(this.createMiniCalendarCell(prevYear, prevMonthIdx, prevDay, true));
-    }
-
-    // Current month days
-    for (let i = 1; i <= lastDay; i++) {
-      miniCells.appendChild(this.createMiniCalendarCell(year, month, i, false));
-    }
-
-    // Fill next month days
-    const totalCells = miniCells.children.length;
-    const remainingDays = 35 - totalCells; // 5 rows = 35 cells
-    const finalRemaining = remainingDays < 0 ? 42 - totalCells : remainingDays;
-
-    for (let j = 1; j <= finalRemaining; j++) {
-      const nextMonthIdx = month === 11 ? 0 : month + 1;
-      const nextYear = month === 11 ? year + 1 : year;
-
-      miniCells.appendChild(this.createMiniCalendarCell(nextYear, nextMonthIdx, j, true));
-    }
-
-    // Render event list for selected day
-    this.renderMiniCalendarDayEvents();
-  },
-
-  createMiniCalendarCell(year, month, day, isOtherMonth) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    const cell = document.createElement('div');
-    cell.className = 'mini-calendar-cell';
-    cell.textContent = day;
-
-    if (isOtherMonth) {
-      cell.classList.add('other-month');
-    }
-
-    // Today
-    if (!isOtherMonth && year === 2025 && month === 6 && day === 31) {
-      cell.classList.add('today');
-    }
-
-    // Selected state
-    if (dateStr === this.miniCalSelectedDayStr) {
-      cell.classList.add('selected');
-    }
-
-    // Checking if there are orders
-    const hasOrders = this.orders.some(o => o.pickupDate.startsWith(dateStr) && o.orderStatus !== 'Cancelled');
-    if (hasOrders) {
-      cell.classList.add('has-orders');
-    }
-
-    cell.addEventListener('click', () => {
-      // Remove selected
-      document.querySelectorAll('.mini-calendar-cell').forEach(c => c.classList.remove('selected'));
-      cell.classList.add('selected');
-
-      this.miniCalSelectedDayStr = dateStr;
-      this.renderMiniCalendarDayEvents();
+    orders.forEach(o => {
+      if (!o.items) return;
+      const itemsList = o.items.split(/[,;\+]/).map(i => i.trim()).filter(Boolean);
+      itemsList.forEach(itemName => {
+        productCounts[itemName] = (productCounts[itemName] || 0) + 1;
+      });
     });
 
-    return cell;
-  },
+    const sortedProducts = Object.keys(productCounts)
+      .map(name => ({ name, count: productCounts[name] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
-  renderMiniCalendarDayEvents() {
-    const dateLabel = document.getElementById('dashboard-mini-calendar-selected-date-label');
-    const container = document.getElementById('dashboard-mini-calendar-events');
-    container.innerHTML = '';
-
-    // Format label date (Thu, July 31, 2025)
-    const selDate = new Date(this.miniCalSelectedDayStr + 'T12:00:00');
-    dateLabel.textContent = selDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-
-    // Filter orders
-    const dayOrders = this.orders.filter(o => o.pickupDate.startsWith(this.miniCalSelectedDayStr) && o.orderStatus !== 'Cancelled');
-
-    if (dayOrders.length === 0) {
-      container.innerHTML = `<div style="font-size:0.75rem; color:var(--color-text-muted); padding: 15px 0;">No events scheduled.</div>`;
+    if (sortedProducts.length === 0) {
+      list.innerHTML = `<div style="color:var(--color-text-muted); font-size:0.8rem; padding:15px 0;">No product sales in this period.</div>`;
       return;
     }
 
-    dayOrders.forEach(o => {
-      const timeStr = new Date(o.pickupDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      const cleanStatus = o.orderStatus.replace(/\s+/g, '');
+    const maxCount = Math.max(...sortedProducts.map(p => p.count), 1);
 
-      const chipHtml = `
-        <div class="mini-event-chip evt-${cleanStatus}" onclick="app.editOrder('${o.id}')">
-          <span class="mini-event-time">${timeStr}</span>
-          <span class="mini-event-details">${o.customerName} - ${o.items}</span>
-        </div>
-      `;
-      container.insertAdjacentHTML('beforeend', chipHtml);
-    });
-  },
-
-  dashboardCalendarPrevMonth() {
-    this.miniCalDate.setMonth(this.miniCalDate.getMonth() - 1);
-    this.renderDashboardMiniCalendar();
-  },
-
-  dashboardCalendarNextMonth() {
-    this.miniCalDate.setMonth(this.miniCalDate.getMonth() + 1);
-    this.renderDashboardMiniCalendar();
-  },
-
-  // ----------------------------------------------------
-  // CHART RENDERING (DASHBOARD REDESIGNED)
-  // ----------------------------------------------------
-
-  // 1. Sales Line Chart
-  renderSalesOverviewChart() {
-    const period = document.getElementById('sales-chart-period-select').value;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const gridColor = isDark ? 'rgba(93, 54, 39, 0.3)' : 'rgba(240, 230, 232, 0.8)';
-    const textColor = isDark ? '#b59c94' : '#8a7376';
-    const primaryColor = isDark ? '#d9a962' : '#e05275';
-    const primaryLightColor = isDark ? 'rgba(217, 169, 98, 0.2)' : 'rgba(224, 82, 117, 0.1)';
-
-    if (this.charts.salesOverview) this.charts.salesOverview.destroy();
-
-    let labels = [];
-    let salesData = [];
-
-    const activeOrders = this.orders.filter(o => o.orderStatus !== 'Cancelled');
-
-    if (period === 'week') {
-      labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      salesData = [0, 0, 0, 0, 0, 0, 0];
-      const orders = this.getOrdersInPeriod('week');
-      orders.forEach(o => {
-        const d = new Date(o.pickupDate);
-        if (!isNaN(d.getTime())) {
-          let dayIdx = d.getDay() - 1;
-          if (dayIdx < 0) dayIdx = 6;
-          salesData[dayIdx] += (o.total ?? o.amount ?? 0);
-        }
-      });
-    } else if (period === 'month') {
-      labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      salesData = [0, 0, 0, 0];
-      const orders = this.getOrdersInPeriod('month');
-      orders.forEach(o => {
-        const d = new Date(o.pickupDate);
-        if (!isNaN(d.getTime())) {
-          const dateNum = d.getDate();
-          const wkIdx = Math.min(3, Math.floor((dateNum - 1) / 7));
-          salesData[wkIdx] += (o.total ?? o.amount ?? 0);
-        }
-      });
-    } else if (period === 'year') {
-      labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      salesData = Array(12).fill(0);
-      const orders = this.getOrdersInPeriod('year');
-      orders.forEach(o => {
-        const d = new Date(o.pickupDate);
-        if (!isNaN(d.getTime())) {
-          const mIdx = d.getMonth();
-          salesData[mIdx] += (o.total ?? o.amount ?? 0);
-        }
-      });
-    }
-
-    const headerTotal = salesData.reduce((a, b) => a + b, 0);
-
-    document.getElementById('week-sales-total').textContent = `$${headerTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-
-    const ctx = document.getElementById('salesOverviewChart').getContext('2d');
-    this.charts.salesOverview = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{
-          label: 'Sales ($)',
-          data: salesData,
-          borderColor: primaryColor,
-          borderWidth: 3,
-          backgroundColor: primaryLightColor,
-          fill: true,
-          tension: 0.4,
-          pointBackgroundColor: primaryColor,
-          pointBorderColor: isDark ? '#2c130b' : '#ffffff',
-          pointHoverRadius: 7,
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 9 } } },
-          y: { grid: { color: gridColor }, ticks: { color: textColor, font: { size: 9 } } }
-        }
-      }
-    });
-  },
-
-  // 2. Expense Summary Donut Chart (replaces the previous orders overview donut)
-  renderExpenseSummaryDonut() {
-    const period = document.getElementById('expense-chart-period-select').value;
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const gridColor = isDark ? 'rgba(93, 54, 39, 0.3)' : 'rgba(240, 230, 232, 0.8)';
-    const textColor = isDark ? '#b59c94' : '#8a7376';
-
-    if (this.charts.expenseSummary) this.charts.expenseSummary.destroy();
-
-    // Group categories
-    const categoriesSum = {};
-    this.expenseCategories.forEach(cat => categoriesSum[cat] = 0);
-
-    const expenses = this.getExpensesInPeriod(period);
-    expenses.forEach(e => {
-      categoriesSum[e.category] = (categoriesSum[e.category] || 0) + e.amount;
-    });
-
-    const totalSum = Object.values(categoriesSum).reduce((a, b) => a + b, 0);
-    document.getElementById('donut-total-orders').textContent = `$${totalSum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-    const chartLabels = Object.keys(categoriesSum);
-    const chartData = Object.values(categoriesSum);
-
-    const chartColors = [
-      '#e05275', // Ingredients (Primary pink)
-      '#f1c40f', // Packaging
-      '#3498db', // Utilities
-      '#2ecc71', // Marketing
-      '#9b59b6', // Delivery
-      '#95a5a6'  // Others
-    ];
-
-    const ctx = document.getElementById('ordersOverviewChart').getContext('2d');
-    this.charts.expenseSummary = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: chartLabels,
-        datasets: [{
-          data: chartData.every(v => v === 0) ? [1] : chartData, // Fallback if 0
-          backgroundColor: chartData.every(v => v === 0) ? ['#e9e9e9'] : chartColors,
-          borderWidth: isDark ? 2 : 1,
-          borderColor: isDark ? '#2c130b' : '#ffffff',
-          hoverOffset: 3
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '72%',
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    // Populate legend row categories
-    const legendList = document.getElementById('expense-summary-category-legend');
-    legendList.innerHTML = '';
-
-    chartLabels.forEach((label, idx) => {
-      const amt = categoriesSum[label];
-      const percentage = totalSum > 0 ? ((amt / totalSum) * 100).toFixed(0) : 0;
-
-      const legendHtml = `
-        <div class="legend-row">
-          <div class="legend-left">
-            <span class="legend-color" style="background-color: ${chartColors[idx]};"></span>
-            <span style="font-weight:500;">${label}</span>
-          </div>
-          <div class="legend-right">
-            <span>$${amt.toFixed(2)}</span>
-            <span style="font-size:0.68rem; font-weight:400; margin-left:6px; color:var(--color-text-muted);">${percentage}%</span>
-          </div>
-        </div>
-      `;
-      legendList.insertAdjacentHTML('beforeend', legendHtml);
-    });
-  },
-
-  // 3. Top Products Progress list
-  renderTopProductsList() {
-    const period = document.getElementById('products-chart-period-select').value;
-    const list = document.getElementById('dashboard-top-products');
-    list.innerHTML = '';
-
-    // Simulated products counts based on period
-    let productsSales = [];
-    if (period === 'week') {
-      productsSales = [
-        { name: 'Floral Cupcakes', count: 12, max: 15 },
-        { name: 'Birthday Cakes', count: 7, max: 15 },
-        { name: 'Cookies', count: 6, max: 15 },
-        { name: 'Brownies', count: 4, max: 15 },
-        { name: 'Cupcake Bouquets', count: 2, max: 15 }
-      ];
-    } else if (period === 'month') {
-      productsSales = [
-        { name: 'Floral Cupcakes', count: 45, max: 50 },
-        { name: 'Birthday Cakes', count: 28, max: 50 },
-        { name: 'Cookies', count: 22, max: 50 },
-        { name: 'Brownies', count: 18, max: 50 },
-        { name: 'Cupcake Bouquets', count: 15, max: 50 }
-      ];
-    } else if (period === 'year') {
-      productsSales = [
-        { name: 'Floral Cupcakes', count: 320, max: 350 },
-        { name: 'Birthday Cakes', count: 180, max: 350 },
-        { name: 'Cookies', count: 145, max: 350 },
-        { name: 'Brownies', count: 110, max: 350 },
-        { name: 'Cupcake Bouquets', count: 95, max: 350 }
-      ];
-    }
-
-    productsSales.forEach(p => {
-      const percentage = (p.count / p.max) * 100;
+    sortedProducts.forEach(p => {
+      const percentage = Math.min(100, (p.count / maxCount) * 100);
       const pHtml = `
         <div class="product-progress-wrapper" style="margin-bottom:8px;">
           <div class="progress-header" style="font-size:0.75rem;">
@@ -1509,37 +1483,132 @@ const app = {
     });
   },
 
-  // Redraws dashboard charts
-  renderCharts() {
-    this.renderSalesOverviewChart();
-    this.renderExpenseSummaryDonut();
-    this.renderTopProductsList();
-  },
-
   // ----------------------------------------------------
-  // RENDERING LOGIC - ORDERS VIEW
+  // RENDERING LOGIC - ORDERS VIEW (FULL FILTERING & SORTING)
   // ----------------------------------------------------
   renderOrdersTable() {
-    const searchVal = document.getElementById('order-search-input').value.toLowerCase();
-    const statusVal = document.getElementById('order-status-filter').value;
-    const paymentVal = document.getElementById('order-payment-filter').value;
+    const searchVal = (document.getElementById('order-search-input')?.value || '').toLowerCase();
+    const statusVal = document.getElementById('order-status-filter')?.value || 'all';
+    const paymentVal = document.getElementById('order-payment-filter')?.value || 'all';
+    const methodVal = document.getElementById('order-payment-method-filter')?.value || 'all';
+    const dateStart = document.getElementById('order-date-start')?.value || '';
+    const dateEnd = document.getElementById('order-date-end')?.value || '';
 
-    // Filter orders
+    const colId = (document.getElementById('col-filter-order-id')?.value || '').toLowerCase();
+    const colCust = (document.getElementById('col-filter-order-customer')?.value || '').toLowerCase();
+    const colItems = (document.getElementById('col-filter-order-items')?.value || '').toLowerCase();
+    const colAdvMin = parseFloat(document.getElementById('col-filter-order-advance-min')?.value) || 0;
+    const colRemMin = parseFloat(document.getElementById('col-filter-order-remaining-min')?.value) || 0;
+    const colTotMin = parseFloat(document.getElementById('col-filter-order-total-min')?.value) || 0;
+    const colPlatform = (document.getElementById('col-filter-order-platform')?.value || '').toLowerCase();
+
+    // Filter pipeline
     let filtered = this.orders.filter(o => {
-      const matchesSearch = o.id.toLowerCase().includes(searchVal) ||
+      const pickupStr = (o.pickupDate || '').slice(0, 10);
+
+      const matchesSearch = !searchVal ||
+        o.id.toLowerCase().includes(searchVal) ||
         o.customerName.toLowerCase().includes(searchVal) ||
-        o.customerPhone.includes(searchVal) ||
+        (o.customerPhone && o.customerPhone.includes(searchVal)) ||
         o.items.toLowerCase().includes(searchVal);
 
       const matchesStatus = statusVal === 'all' || o.orderStatus === statusVal;
-      const matchesPayment = paymentVal === 'all' || o.paymentStatus === paymentVal;
 
-      return matchesSearch && matchesStatus && matchesPayment;
+      const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
+      const pmtString = pymtList.join(' ').toLowerCase();
+
+      const isPaid = (o.remaining === 0 && (o.total > 0 || o.amount > 0)) || pmtString.includes('total paid') || pmtString.includes('paid');
+      const isDepositPaid = (o.advance > 0 && o.remaining > 0) || pmtString.includes('deposit paid') || pmtString.includes('deposit');
+      const isUnpaid = ((!o.advance || o.advance === 0) && (o.remaining > 0 || o.total > 0)) || pmtString.includes('unpaid') || pymtList.length === 0;
+
+      let matchesPayment = paymentVal === 'all';
+      if (paymentVal === 'Paid') matchesPayment = isPaid;
+      else if (paymentVal === 'Deposit Paid') matchesPayment = isDepositPaid;
+      else if (paymentVal === 'Unpaid') matchesPayment = isUnpaid;
+
+      const matchesMethod = methodVal === 'all' || pmtString.includes(methodVal.toLowerCase());
+
+      const matchesDateStart = !dateStart || pickupStr >= dateStart;
+      const matchesDateEnd = !dateEnd || pickupStr <= dateEnd;
+
+      const matchesColId = !colId || o.id.toLowerCase().includes(colId);
+      const matchesColCust = !colCust || o.customerName.toLowerCase().includes(colCust);
+      const matchesColItems = !colItems || o.items.toLowerCase().includes(colItems);
+      const matchesColAdv = (o.advance ?? 0) >= colAdvMin;
+      const matchesColRem = (o.remaining ?? 0) >= colRemMin;
+      const matchesColTot = (o.total ?? o.amount ?? 0) >= colTotMin;
+      const matchesColPlatform = !colPlatform || (o.platform && o.platform.toLowerCase().includes(colPlatform));
+
+      return matchesSearch && matchesStatus && matchesPayment && matchesMethod && matchesDateStart && matchesDateEnd &&
+        matchesColId && matchesColCust && matchesColItems && matchesColAdv && matchesColRem && matchesColTot && matchesColPlatform;
     });
 
-    // Sort orders by pickupDate descending
-    filtered.sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
+    // Sorting pipeline
+    const { col, dir } = this.ordersSort;
+    filtered.sort((a, b) => {
+      let valA = a[col] ?? '';
+      let valB = b[col] ?? '';
 
+      if (col === 'total') { valA = a.total ?? a.amount ?? 0; valB = b.total ?? b.amount ?? 0; }
+      else if (col === 'advance') { valA = a.advance ?? 0; valB = b.advance ?? 0; }
+      else if (col === 'remaining') { valA = a.remaining ?? 0; valB = b.remaining ?? 0; }
+      else if (col === 'payment') {
+        const pA = Array.isArray(a.payments) ? a.payments.join(',') : (a.paymentStatus || '');
+        const pB = Array.isArray(b.payments) ? b.payments.join(',') : (b.paymentStatus || '');
+        valA = pA; valB = pB;
+      }
+
+      let cmp = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB));
+      }
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    // Update Header Sort Icons
+    document.querySelectorAll('#orders-table .sortable-th').forEach(th => {
+      const thCol = th.getAttribute('data-sort-col');
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (thCol === col) {
+        th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+
+    // Summary Footer Totals across ALL filtered records
+    const sumAdvance = filtered.reduce((s, o) => s + (o.advance ?? 0), 0);
+    const sumRemaining = filtered.reduce((s, o) => s + (o.remaining ?? 0), 0);
+    const sumTotal = filtered.reduce((s, o) => s + (o.total ?? o.amount ?? 0), 0);
+
+    const tfootAdv = document.getElementById('orders-tfoot-advance');
+    const tfootRem = document.getElementById('orders-tfoot-remaining');
+    const tfootTot = document.getElementById('orders-tfoot-total');
+    if (tfootAdv) tfootAdv.textContent = `$${sumAdvance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (tfootRem) tfootRem.textContent = `$${sumRemaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (tfootTot) tfootTot.textContent = `$${sumTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+    // Update Filter Status Bar
+    const statusBar = document.getElementById('orders-filter-status-bar');
+    const statusText = document.getElementById('orders-filter-status-text');
+    const totalAll = this.orders.length;
+
+    const activeList = [];
+    if (dateStart || dateEnd) activeList.push(`Date: ${dateStart || 'Start'} to ${dateEnd || 'End'}`);
+    if (statusVal !== 'all') activeList.push(`Status: ${statusVal}`);
+    if (paymentVal !== 'all') activeList.push(`Payment: ${paymentVal}`);
+    if (searchVal) activeList.push(`Search: "${searchVal}"`);
+    if (colId || colCust || colItems || colAdvMin || colRemMin || colTotMin || colPlatform) activeList.push(`Column Filters`);
+
+    if (filtered.length < totalAll || activeList.length > 0) {
+      if (statusBar) statusBar.style.display = 'flex';
+      const summaryStr = activeList.length ? ` — Filters: ${activeList.join(' | ')}` : ' (Filtered)';
+      if (statusText) statusText.textContent = `Showing ${filtered.length} of ${totalAll} orders${summaryStr}`;
+    } else {
+      if (statusBar) statusBar.style.display = 'none';
+    }
+
+    // Pagination pipeline
     const totalRecords = filtered.length;
     const limit = this.pagination.orders.limit;
     const totalPages = Math.ceil(totalRecords / limit) || 1;
@@ -1562,14 +1631,14 @@ const app = {
     tbody.innerHTML = '';
 
     if (paginated.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No matching orders found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No matching orders found.</td></tr>`;
       return;
     }
 
     paginated.forEach(o => {
       const dateOpt = { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' };
       const pickupFormatted = new Date(o.pickupDate).toLocaleDateString('en-US', dateOpt);
-      const initials = o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+      const initials = o.customerName ? o.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'CU';
       const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
       const pymtDisplay = pymtList.length ? pymtList.map(p => `<span class="badge badge-info" style="font-size:0.7rem; margin:1px;">${p}</span>`).join('') : '<span class="badge badge-danger">Unpaid</span>';
       const platformDisplay = o.platform || '-';
@@ -1582,15 +1651,15 @@ const app = {
               <div class="avatar-initials">${initials}</div>
               <div class="customer-meta-info">
                 <span class="customer-name" style="font-weight:600;">${o.customerName}</span>
-                <span class="customer-phone">${o.customerPhone}</span>
+                <span class="customer-phone">${o.customerPhone || ''}</span>
               </div>
             </div>
           </td>
           <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${o.items}</td>
           <td>${pickupFormatted}</td>
-          <td style="font-weight:600;">$${(o.advance ?? 0)}</td>
-          <td>$${(o.remaining ?? 0)}</td>
-          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0)}</td>
+          <td style="font-weight:600;">$${(o.advance ?? 0).toFixed(2)}</td>
+          <td>$${(o.remaining ?? 0).toFixed(2)}</td>
+          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0).toFixed(2)}</td>
           <td>${pymtDisplay}</td>
           <td><span style="font-size:0.8rem;">${platformDisplay}</span></td>
           <td><span class="badge badge-${this.getStatusBadgeType(o.orderStatus)}">${o.orderStatus}</span></td>
@@ -1611,127 +1680,81 @@ const app = {
   },
 
   // ----------------------------------------------------
-  // CALENDAR VIEWER CODE
-  // ----------------------------------------------------
-  renderCalendar() {
-    const calendarGrid = document.getElementById('calendar-grid-cells');
-    calendarGrid.innerHTML = '';
-
-    const year = this.calendarDate.getFullYear();
-    const month = this.calendarDate.getMonth();
-
-    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    document.getElementById('calendar-month-year').textContent = `${monthNames[month]} ${year}`;
-
-    const firstDayIndex = new Date(year, month, 1).getDay();
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const prevLastDay = new Date(year, month, 0).getDate();
-
-    // Fill prev month days
-    for (let x = firstDayIndex; x > 0; x--) {
-      const prevDay = prevLastDay - x + 1;
-      const prevMonthIdx = month === 0 ? 11 : month - 1;
-      const prevYear = month === 0 ? year - 1 : year;
-
-      calendarGrid.appendChild(this.createCalendarDayCell(prevYear, prevMonthIdx, prevDay, true));
-    }
-
-    // Current month days
-    for (let i = 1; i <= lastDay; i++) {
-      calendarGrid.appendChild(this.createCalendarDayCell(year, month, i, false));
-    }
-
-    // Fill next month days
-    const totalCells = calendarGrid.children.length;
-    const remainingDays = 42 - totalCells;
-    for (let j = 1; j <= remainingDays; j++) {
-      const nextMonthIdx = month === 11 ? 0 : month + 1;
-      const nextYear = month === 11 ? year + 1 : year;
-
-      calendarGrid.appendChild(this.createCalendarDayCell(nextYear, nextMonthIdx, j, true));
-    }
-
-    lucide.createIcons();
-  },
-
-  createCalendarDayCell(year, month, day, isOtherMonth) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    const cell = document.createElement('div');
-    cell.className = 'calendar-day-cell';
-    if (isOtherMonth) cell.classList.add('other-month');
-
-    if (!isOtherMonth && year === 2025 && month === 6 && day === 31) {
-      cell.classList.add('today');
-    }
-
-    const dayNum = document.createElement('div');
-    dayNum.className = 'calendar-day-number';
-    dayNum.textContent = day;
-    cell.appendChild(dayNum);
-
-    const dayOrders = this.orders.filter(o => o.pickupDate.startsWith(dateStr) && o.orderStatus !== 'Cancelled');
-
-    if (dayOrders.length > 0) {
-      const evList = document.createElement('div');
-      evList.className = 'calendar-events-list';
-
-      dayOrders.forEach(o => {
-        const timeStr = o.pickupDate.slice(11, 16);
-        const cleanStatus = o.orderStatus.replace(/\s+/g, '');
-
-        const badge = document.createElement('div');
-        badge.className = `calendar-event-badge evt-${cleanStatus}`;
-        badge.innerHTML = `<span style="font-weight:600;">${timeStr}</span> <span>${o.customerName}</span>`;
-        badge.setAttribute('title', `${o.customerName} - ${o.items}`);
-        badge.addEventListener('click', (e) => {
-          e.stopPropagation();
-          app.editOrder(o.id);
-        });
-
-        evList.appendChild(badge);
-      });
-
-      cell.appendChild(evList);
-    }
-
-    return cell;
-  },
-
-  calendarPrevMonth() {
-    this.calendarDate.setMonth(this.calendarDate.getMonth() - 1);
-    this.renderCalendar();
-  },
-
-  calendarNextMonth() {
-    this.calendarDate.setMonth(this.calendarDate.getMonth() + 1);
-    this.renderCalendar();
-  },
-
-  // ----------------------------------------------------
-  // RENDERING LOGIC - EXPENSES VIEW
+  // RENDERING LOGIC - EXPENSES VIEW (FULL FILTERING & SORTING)
   // ----------------------------------------------------
   renderExpensesTable() {
-    const searchVal = document.getElementById('expense-search-input').value.toLowerCase();
-    const categoryVal = document.getElementById('expense-category-filter').value;
-    const dateStartVal = document.getElementById('expense-date-start').value;
-    const dateEndVal = document.getElementById('expense-date-end').value;
+    const searchVal = (document.getElementById('expense-search-input')?.value || '').toLowerCase();
+    const categoryVal = document.getElementById('expense-category-filter')?.value || 'all';
+    const dateStartVal = document.getElementById('expense-date-start')?.value || '';
+    const dateEndVal = document.getElementById('expense-date-end')?.value || '';
+
+    const colItem = (document.getElementById('col-filter-exp-item')?.value || '').toLowerCase();
+    const colAmountMin = parseFloat(document.getElementById('col-filter-exp-amount-min')?.value) || 0;
+    const colMethod = (document.getElementById('col-filter-exp-method')?.value || '').toLowerCase();
+    const colNotes = (document.getElementById('col-filter-exp-notes')?.value || '').toLowerCase();
 
     let filtered = this.expenses.filter(e => {
-      const matchesSearch = e.item.toLowerCase().includes(searchVal) ||
+      const matchesSearch = !searchVal ||
+        e.item.toLowerCase().includes(searchVal) ||
         (e.notes && e.notes.toLowerCase().includes(searchVal));
 
       const matchesCategory = categoryVal === 'all' || e.category === categoryVal;
       const matchesStart = !dateStartVal || e.date >= dateStartVal;
       const matchesEnd = !dateEndVal || e.date <= dateEndVal;
 
-      return matchesSearch && matchesCategory && matchesStart && matchesEnd;
+      const matchesColItem = !colItem || e.item.toLowerCase().includes(colItem);
+      const matchesColAmount = e.amount >= colAmountMin;
+      const matchesColMethod = !colMethod || (e.method && e.method.toLowerCase().includes(colMethod));
+      const matchesColNotes = !colNotes || (e.notes && e.notes.toLowerCase().includes(colNotes));
+
+      return matchesSearch && matchesCategory && matchesStart && matchesEnd &&
+        matchesColItem && matchesColAmount && matchesColMethod && matchesColNotes;
     });
 
-    filtered.sort((a, b) => b.date.localeCompare(a.date));
+    const { col, dir } = this.expensesSort;
+    filtered.sort((a, b) => {
+      let valA = a[col] ?? '';
+      let valB = b[col] ?? '';
+      let cmp = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB));
+      }
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#expenses-table .sortable-th').forEach(th => {
+      const thCol = th.getAttribute('data-sort-col');
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (thCol === col) {
+        th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
 
     const totalExpenseSum = filtered.reduce((sum, e) => sum + e.amount, 0);
-    document.getElementById('expenses-total-summary').textContent = `$${totalExpenseSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    const summaryCard = document.getElementById('expenses-total-summary');
+    const tfootAmt = document.getElementById('expenses-tfoot-amount');
+    if (summaryCard) summaryCard.textContent = `$${totalExpenseSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (tfootAmt) tfootAmt.textContent = `$${totalExpenseSum.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+    const statusBar = document.getElementById('expenses-filter-status-bar');
+    const statusText = document.getElementById('expenses-filter-status-text');
+    const totalAll = this.expenses.length;
+
+    const activeList = [];
+    if (dateStartVal || dateEndVal) activeList.push(`Date: ${dateStartVal || 'Start'} to ${dateEndVal || 'End'}`);
+    if (categoryVal !== 'all') activeList.push(`Category: ${categoryVal}`);
+    if (searchVal) activeList.push(`Search: "${searchVal}"`);
+    if (colItem || colAmountMin || colMethod || colNotes) activeList.push(`Column Filters`);
+
+    if (filtered.length < totalAll || activeList.length > 0) {
+      if (statusBar) statusBar.style.display = 'flex';
+      const summaryStr = activeList.length ? ` — Filters: ${activeList.join(' | ')}` : ' (Filtered)';
+      if (statusText) statusText.textContent = `Showing ${filtered.length} of ${totalAll} expenses${summaryStr}`;
+    } else {
+      if (statusBar) statusBar.style.display = 'none';
+    }
 
     const totalRecords = filtered.length;
     const limit = this.pagination.expenses.limit;
@@ -1788,173 +1811,112 @@ const app = {
   },
 
   // ----------------------------------------------------
-  // RENDERING LOGIC - CUSTOMERS VIEW
-  // ----------------------------------------------------
-  renderCustomersTable() {
-    const searchVal = document.getElementById('customer-search-input').value.toLowerCase();
-
-    let filtered = this.customers.filter(c => {
-      return c.name.toLowerCase().includes(searchVal) ||
-        c.phone.includes(searchVal) ||
-        c.email.toLowerCase().includes(searchVal);
-    });
-
-    filtered.sort((a, b) => b.totalSpent - a.totalSpent);
-
-    const totalRecords = filtered.length;
-    const limit = this.pagination.customers.limit;
-    const totalPages = Math.ceil(totalRecords / limit) || 1;
-
-    if (this.pagination.customers.current > totalPages) {
-      this.pagination.customers.current = totalPages;
-    }
-
-    const startIndex = (this.pagination.customers.current - 1) * limit;
-    const paginated = filtered.slice(startIndex, startIndex + limit);
-
-    const infoText = totalRecords > 0
-      ? `Showing ${startIndex + 1} to ${Math.min(startIndex + limit, totalRecords)} of ${totalRecords} customers`
-      : 'Showing 0 to 0 of 0 customers';
-    document.getElementById('customers-pagination-info').textContent = infoText;
-
-    this.renderPaginationControls('customers', totalPages);
-
-    const tbody = document.getElementById('customers-table-body');
-    tbody.innerHTML = '';
-
-    if (paginated.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No customers found.</td></tr>`;
-      return;
-    }
-
-    paginated.forEach(c => {
-      const initials = c.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-      const lastOrderFormatted = c.lastOrder
-        ? new Date(c.lastOrder + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : 'Never';
-
-      const trHtml = `
-        <tr>
-          <td>
-            <div class="customer-cell">
-              <div class="avatar-initials">${initials}</div>
-              <span style="font-weight: 600;">${c.name}</span>
-            </div>
-          </td>
-          <td>${c.phone}</td>
-          <td>${c.email || '-'}</td>
-          <td style="font-weight: 500;">${c.totalOrders}</td>
-          <td style="font-weight: 600;">$${c.totalSpent.toFixed(2)}</td>
-          <td>${lastOrderFormatted}</td>
-          <td style="text-align: center;">
-            <button class="btn-action-trigger" onclick="app.editCustomer('${c.id}')" title="Edit Customer">
-              <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
-            </button>
-            <button class="btn-action-trigger text-danger" onclick="app.deleteCustomer('${c.id}')" title="Delete Customer" style="margin-left: 8px;">
-              <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-            </button>
-          </td>
-        </tr>
-      `;
-      tbody.insertAdjacentHTML('beforeend', trHtml);
-    });
-
-    lucide.createIcons();
-  },
-
-  // ----------------------------------------------------
-  // RENDERING LOGIC - INVENTORY VIEW
-  // ----------------------------------------------------
-  renderInventoryTable() {
-    const searchVal = document.getElementById('inventory-search-input').value.toLowerCase();
-    const categoryVal = document.getElementById('inventory-category-filter').value;
-
-    let filtered = this.inventory.filter(i => {
-      const matchesSearch = i.name.toLowerCase().includes(searchVal);
-      const matchesCategory = categoryVal === 'all' || i.category === categoryVal;
-      return matchesSearch && matchesCategory;
-    });
-
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
-
-    const totalRecords = filtered.length;
-    const limit = this.pagination.inventory.limit;
-    const totalPages = Math.ceil(totalRecords / limit) || 1;
-
-    if (this.pagination.inventory.current > totalPages) {
-      this.pagination.inventory.current = totalPages;
-    }
-
-    const startIndex = (this.pagination.inventory.current - 1) * limit;
-    const paginated = filtered.slice(startIndex, startIndex + limit);
-
-    const infoText = totalRecords > 0
-      ? `Showing ${startIndex + 1} to ${Math.min(startIndex + limit, totalRecords)} of ${totalRecords} items`
-      : 'Showing 0 to 0 of 0 items';
-    document.getElementById('inventory-pagination-info').textContent = infoText;
-
-    this.renderPaginationControls('inventory', totalPages);
-
-    const tbody = document.getElementById('inventory-table-body');
-    tbody.innerHTML = '';
-
-    if (paginated.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No inventory items found.</td></tr>`;
-      return;
-    }
-
-    paginated.forEach(i => {
-      let badgeClass = 'success';
-      let statusText = 'In Stock';
-
-      if (i.stock === 0) {
-        badgeClass = 'danger';
-        statusText = 'Out of Stock';
-      } else if (i.stock < i.threshold) {
-        badgeClass = 'warning';
-        statusText = 'Low Stock';
-      }
-
-      const trHtml = `
-        <tr>
-          <td style="font-weight: 600;">${i.name}</td>
-          <td><span class="badge badge-neutral">${i.category}</span></td>
-          <td style="font-weight: 500;">${i.stock}</td>
-          <td>${i.unit}</td>
-          <td style="color: var(--color-text-muted);">${i.threshold} ${i.unit}</td>
-          <td><span class="badge badge-${badgeClass}">${statusText}</span></td>
-          <td style="text-align: center;">
-            <button class="btn-action-trigger" onclick="app.editInventory('${i.id}')" title="Edit Item">
-              <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
-            </button>
-            <button class="btn-action-trigger text-danger" onclick="app.deleteInventory('${i.id}')" title="Delete Item" style="margin-left: 8px;">
-              <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-            </button>
-          </td>
-        </tr>
-      `;
-      tbody.insertAdjacentHTML('beforeend', trHtml);
-    });
-
-    lucide.createIcons();
-  },
-
-  // ----------------------------------------------------
-  // RENDERING LOGIC - PAYMENTS LEDGER VIEW
+  // RENDERING LOGIC - PAYMENTS LEDGER VIEW (FULL FILTERING & SORTING)
   // ----------------------------------------------------
   renderPaymentsTable() {
-    const searchVal = document.getElementById('payment-search-input').value.toLowerCase();
-    const statusVal = document.getElementById('payment-status-filter').value;
+    const searchVal = (document.getElementById('payment-search-input')?.value || '').toLowerCase();
+    const statusVal = document.getElementById('payment-status-filter')?.value || 'all';
+    const methodVal = document.getElementById('payment-method-filter')?.value || 'all';
+    const dateStart = document.getElementById('payment-date-start')?.value || '';
+    const dateEnd = document.getElementById('payment-date-end')?.value || '';
+
+    const colId = (document.getElementById('col-filter-pay-id')?.value || '').toLowerCase();
+    const colCust = (document.getElementById('col-filter-pay-customer')?.value || '').toLowerCase();
+    const colAdvMin = parseFloat(document.getElementById('col-filter-pay-advance-min')?.value) || 0;
+    const colRemMin = parseFloat(document.getElementById('col-filter-pay-remaining-min')?.value) || 0;
+    const colTotMin = parseFloat(document.getElementById('col-filter-pay-total-min')?.value) || 0;
+    const colNotes = (document.getElementById('col-filter-pay-notes')?.value || '').toLowerCase();
 
     let filtered = this.orders.filter(o => {
-      const matchesSearch = o.id.toLowerCase().includes(searchVal) ||
+      if (o.orderStatus === 'Cancelled') return false;
+      const pickupStr = (o.pickupDate || '').slice(0, 10);
+
+      const matchesSearch = !searchVal ||
+        o.id.toLowerCase().includes(searchVal) ||
         o.customerName.toLowerCase().includes(searchVal) ||
         o.items.toLowerCase().includes(searchVal);
-      const matchesStatus = statusVal === 'all' || o.paymentStatus === statusVal;
-      return matchesSearch && matchesStatus && o.orderStatus !== 'Cancelled';
+
+      const pymtList = Array.isArray(o.payments) ? o.payments : (o.paymentStatus ? [o.paymentStatus] : []);
+      const pmtString = pymtList.join(' ').toLowerCase();
+
+      const isPaid = (o.remaining === 0 && (o.total > 0 || o.amount > 0)) || pmtString.includes('total paid') || pmtString.includes('paid');
+      const isDepositPaid = (o.advance > 0 && o.remaining > 0) || pmtString.includes('deposit paid') || pmtString.includes('deposit');
+      const isUnpaid = ((!o.advance || o.advance === 0) && (o.remaining > 0 || o.total > 0)) || pmtString.includes('unpaid') || pymtList.length === 0;
+
+      let matchesStatus = statusVal === 'all';
+      if (statusVal === 'Paid') matchesStatus = isPaid;
+      else if (statusVal === 'Deposit Paid') matchesStatus = isDepositPaid;
+      else if (statusVal === 'Unpaid') matchesStatus = isUnpaid;
+
+      const matchesMethod = methodVal === 'all' || pmtString.includes(methodVal.toLowerCase());
+
+      const matchesDateStart = !dateStart || pickupStr >= dateStart;
+      const matchesDateEnd = !dateEnd || pickupStr <= dateEnd;
+
+      const matchesColId = !colId || o.id.toLowerCase().includes(colId);
+      const matchesColCust = !colCust || o.customerName.toLowerCase().includes(colCust);
+      const matchesColAdv = (o.advance ?? 0) >= colAdvMin;
+      const matchesColRem = (o.remaining ?? 0) >= colRemMin;
+      const matchesColTot = (o.total ?? o.amount ?? 0) >= colTotMin;
+      const matchesColNotes = !colNotes || (o.notes && o.notes.toLowerCase().includes(colNotes));
+
+      return matchesSearch && matchesStatus && matchesMethod && matchesDateStart && matchesDateEnd &&
+        matchesColId && matchesColCust && matchesColAdv && matchesColRem && matchesColTot && matchesColNotes;
     });
 
-    filtered.sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
+    const { col, dir } = this.paymentsSort;
+    filtered.sort((a, b) => {
+      let valA = a[col] ?? '';
+      let valB = b[col] ?? '';
+      if (col === 'total') { valA = a.total ?? a.amount ?? 0; valB = b.total ?? b.amount ?? 0; }
+      else if (col === 'advance') { valA = a.advance ?? 0; valB = b.advance ?? 0; }
+      else if (col === 'remaining') { valA = a.remaining ?? 0; valB = b.remaining ?? 0; }
+
+      let cmp = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB));
+      }
+      return dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#payments-table .sortable-th').forEach(th => {
+      const thCol = th.getAttribute('data-sort-col');
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (thCol === col) {
+        th.classList.add(dir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+
+    const sumAdv = filtered.reduce((s, o) => s + (o.advance ?? 0), 0);
+    const sumRem = filtered.reduce((s, o) => s + (o.remaining ?? 0), 0);
+    const sumTot = filtered.reduce((s, o) => s + (o.total ?? o.amount ?? 0), 0);
+
+    const tfootAdv = document.getElementById('payments-tfoot-advance');
+    const tfootRem = document.getElementById('payments-tfoot-remaining');
+    const tfootTot = document.getElementById('payments-tfoot-total');
+    if (tfootAdv) tfootAdv.textContent = `$${sumAdv.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (tfootRem) tfootRem.textContent = `$${sumRem.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    if (tfootTot) tfootTot.textContent = `$${sumTot.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+    const statusBar = document.getElementById('payments-filter-status-bar');
+    const statusText = document.getElementById('payments-filter-status-text');
+    const totalAll = this.orders.filter(o => o.orderStatus !== 'Cancelled').length;
+
+    const activeList = [];
+    if (dateStart || dateEnd) activeList.push(`Date: ${dateStart || 'Start'} to ${dateEnd || 'End'}`);
+    if (statusVal !== 'all') activeList.push(`Status: ${statusVal}`);
+    if (searchVal) activeList.push(`Search: "${searchVal}"`);
+    if (colId || colCust || colAdvMin || colRemMin || colTotMin || colNotes) activeList.push(`Column Filters`);
+
+    if (filtered.length < totalAll || activeList.length > 0) {
+      if (statusBar) statusBar.style.display = 'flex';
+      const summaryStr = activeList.length ? ` — Filters: ${activeList.join(' | ')}` : ' (Filtered)';
+      if (statusText) statusText.textContent = `Showing ${filtered.length} of ${totalAll} payments${summaryStr}`;
+    } else {
+      if (statusBar) statusBar.style.display = 'none';
+    }
 
     const totalRecords = filtered.length;
     const limit = this.pagination.payments.limit;
@@ -1978,7 +1940,7 @@ const app = {
     tbody.innerHTML = '';
 
     if (paginated.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No payments found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--color-text-muted); padding: 40px;">No payments found.</td></tr>`;
       return;
     }
 
@@ -1993,9 +1955,9 @@ const app = {
           <td><span class="order-id-txt">${o.id}</span></td>
           <td style="font-weight:600;">${o.customerName}</td>
           <td>${dateStr}</td>
-          <td style="font-weight:600;">$${(o.advance ?? 0)}</td>
-          <td>$${(o.remaining ?? 0)}</td>
-          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0)}</td>
+          <td style="font-weight:600;">$${(o.advance ?? 0).toFixed(2)}</td>
+          <td>$${(o.remaining ?? 0).toFixed(2)}</td>
+          <td style="font-weight:600;">$${(o.total ?? o.amount ?? 0).toFixed(2)}</td>
           <td>${pymtDisplay}</td>
           <td style="max-width: 250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.8rem; color:var(--color-text-muted);">${o.notes || '-'}</td>
         </tr>
@@ -2007,14 +1969,18 @@ const app = {
   },
 
   // ----------------------------------------------------
-  // RENDERING LOGIC - REPORTS VIEW
+  // RENDERING LOGIC - REPORTS VIEW (OVERHAULED FORMULAS)
   // ----------------------------------------------------
   setupReportsDates() {
     const startInput = document.getElementById('report-date-start');
     const endInput = document.getElementById('report-date-end');
+    const periodSelect = document.getElementById('report-period-select');
 
-    if (!startInput.value) startInput.value = '2025-07-01';
-    if (!endInput.value) endInput.value = '2025-07-31';
+    if (periodSelect && periodSelect.value !== 'all' && periodSelect.value !== 'custom') {
+      const range = this.getPeriodDates(periodSelect.value);
+      if (startInput) startInput.value = range.start;
+      if (endInput) endInput.value = range.end;
+    }
   },
 
   renderReportsMain() {
@@ -2023,28 +1989,59 @@ const app = {
     const textColor = isDark ? '#b59c94' : '#8a7376';
     const primaryColor = isDark ? '#d9a962' : '#e05275';
 
-    const activeReportTab = document.querySelector('.report-tab-item.active').getAttribute('data-report');
+    const activeReportTab = document.querySelector('.report-tab-item.active')?.getAttribute('data-report') || 'sales';
     const startD = document.getElementById('report-date-start').value;
     const endD = document.getElementById('report-date-end').value;
 
-    // Filter orders & expenses in range
+    // Filter orders & expenses strictly by selected date range
     const ordersInRange = this.orders.filter(o => {
-      const orderDate = o.pickupDate.slice(0, 10);
+      const orderDate = (o.pickupDate || '').slice(0, 10);
       return o.orderStatus !== 'Cancelled' && (!startD || orderDate >= startD) && (!endD || orderDate <= endD);
     });
 
     const expensesInRange = this.expenses.filter(e => {
-      return (!startD || e.date >= startD) && (!endD || e.date <= endD);
+      const expDate = (e.date || '').slice(0, 10);
+      return (!startD || expDate >= startD) && (!endD || expDate <= endD);
     });
 
-    if (this.charts.reportsMain) this.charts.reportsMain.destroy();
+    if (this.charts.reportsMain) {
+      this.charts.reportsMain.destroy();
+      this.charts.reportsMain = null;
+    }
     const ctxReport = document.getElementById('reportsMainChart').getContext('2d');
 
-    const totalSales = ordersInRange.reduce((sum, o) => sum + o.amount, 0);
+    const totalSales = ordersInRange.reduce((sum, o) => sum + (o.total ?? o.amount ?? 0), 0);
     const totalExpenses = expensesInRange.reduce((sum, e) => sum + e.amount, 0);
     const totalOrders = ordersInRange.length;
     const avgOrderVal = totalOrders > 0 ? totalSales / totalOrders : 0;
     const netProfit = totalSales - totalExpenses;
+
+    // Growth calculation (compare against prior equal period length)
+    let growthText = '0%';
+    if (startD && endD) {
+      const dStart = new Date(startD);
+      const dEnd = new Date(endD);
+      const diffMs = dEnd.getTime() - dStart.getTime();
+      const diffDays = Math.max(1, Math.round(diffMs / 86400000)) + 1;
+
+      const priorEnd = new Date(dStart.getTime() - 86400000);
+      const priorStart = new Date(priorEnd.getTime() - ((diffDays - 1) * 86400000));
+      const priorStartStr = priorStart.toISOString().slice(0, 10);
+      const priorEndStr = priorEnd.toISOString().slice(0, 10);
+
+      const priorOrders = this.orders.filter(o => {
+        const d = (o.pickupDate || '').slice(0, 10);
+        return o.orderStatus !== 'Cancelled' && d >= priorStartStr && d <= priorEndStr;
+      });
+      const priorSales = priorOrders.reduce((sum, o) => sum + (o.total ?? o.amount ?? 0), 0);
+
+      if (priorSales > 0) {
+        const pct = ((totalSales - priorSales) / priorSales) * 100;
+        growthText = `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`;
+      } else if (totalSales > 0) {
+        growthText = '+100%';
+      }
+    }
 
     const metric1Lbl = document.getElementById('rep-metric-1-label');
     const metric1Val = document.getElementById('rep-metric-1-value');
@@ -2058,32 +2055,35 @@ const app = {
     const chartTitle = document.getElementById('report-chart-title');
 
     if (activeReportTab === 'sales') {
-      chartTitle.textContent = "Monthly Sales Transactions";
+      chartTitle.textContent = "Sales Revenue over Selected Period";
       metric1Lbl.textContent = "Total Sales";
       metric1Val.textContent = `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
       metric1Val.className = "box-value";
+
       metric2Lbl.textContent = "Total Orders";
       metric2Val.textContent = totalOrders;
+
       metric3Lbl.textContent = "Avg Order Value";
       metric3Val.textContent = `$${avgOrderVal.toFixed(2)}`;
-      metric4Lbl.textContent = "Growth (vs Last Month)";
-      metric4Val.textContent = "+ 18%";
-      metric4Val.className = "box-value text-success";
 
-      const days = Array.from({ length: 31 }, (_, i) => i + 1);
-      const salesByDay = Array(31).fill(0);
+      metric4Lbl.textContent = "Growth (vs Prior Period)";
+      metric4Val.textContent = growthText;
+      metric4Val.className = growthText.startsWith('-') ? "box-value text-danger" : "box-value text-success";
+
+      const dateMap = {};
       ordersInRange.forEach(o => {
-        const day = parseInt(o.pickupDate.slice(8, 10));
-        if (day >= 1 && day <= 31) salesByDay[day - 1] += o.amount;
+        const day = (o.pickupDate || '').slice(0, 10);
+        if (day) dateMap[day] = (dateMap[day] || 0) + (o.total ?? o.amount ?? 0);
       });
+      const sortedDays = Object.keys(dateMap).sort();
 
       this.charts.reportsMain = new Chart(ctxReport, {
         type: 'bar',
         data: {
-          labels: days.map(d => `Jul ${d}`),
+          labels: sortedDays.length ? sortedDays : ['No Data'],
           datasets: [{
             label: 'Sales ($)',
-            data: salesByDay,
+            data: sortedDays.length ? sortedDays.map(d => dateMap[d]) : [0],
             backgroundColor: primaryColor,
             borderRadius: 4
           }]
@@ -2103,7 +2103,6 @@ const app = {
       metric1Lbl.textContent = "Total Expenses";
       metric1Val.textContent = `$${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
       metric1Val.className = "box-value";
-      metric2Lbl.textContent = "Largest Category";
 
       const expenseGroups = {};
       this.expenseCategories.forEach(c => expenseGroups[c] = 0);
@@ -2120,11 +2119,14 @@ const app = {
         }
       });
 
+      metric2Lbl.textContent = "Largest Category";
       metric2Val.textContent = maxCategory;
+
       metric3Lbl.textContent = "Transactions";
       metric3Val.textContent = expensesInRange.length;
+
       metric4Lbl.textContent = "Status";
-      metric4Val.textContent = "On Budget";
+      metric4Val.textContent = expensesInRange.length > 0 ? "Active" : "No Expenses";
       metric4Val.className = "box-value text-success";
 
       this.charts.reportsMain = new Chart(ctxReport, {
@@ -2149,40 +2151,30 @@ const app = {
       });
 
     } else if (activeReportTab === 'profit') {
-      chartTitle.textContent = "Monthly Sales vs Expenses";
+      chartTitle.textContent = "Net Profit (Sales vs Expenses)";
       metric1Lbl.textContent = "Net Profit";
       metric1Val.textContent = `$${netProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
       metric1Val.className = netProfit >= 0 ? "box-value text-success" : "box-value text-danger";
+
       metric2Lbl.textContent = "Total Revenues";
       metric2Val.textContent = `$${totalSales.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
       metric3Lbl.textContent = "Total Outflows";
       metric3Val.textContent = `$${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-      metric4Lbl.textContent = "Margin";
 
+      metric4Lbl.textContent = "Profit Margin";
       const margin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
-      metric4Val.textContent = `${margin.toFixed(0)}%`;
+      metric4Val.textContent = `${margin.toFixed(1)}%`;
       metric4Val.className = margin >= 0 ? "box-value text-success" : "box-value text-danger";
-
-      const weeklyRevenue = [1850.00, 2450.00, 3100.00, 5050.00];
-      const weeklyCost = [650.00, 950.00, 1100.00, 1150.75];
 
       this.charts.reportsMain = new Chart(ctxReport, {
         type: 'bar',
         data: {
-          labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+          labels: ['Financial Overview'],
           datasets: [
-            {
-              label: 'Revenue ($)',
-              data: weeklyRevenue,
-              backgroundColor: '#2ecc71',
-              borderRadius: 4
-            },
-            {
-              label: 'Expenses ($)',
-              data: weeklyCost,
-              backgroundColor: '#e74c3c',
-              borderRadius: 4
-            }
+            { label: 'Revenue ($)', data: [totalSales], backgroundColor: '#2ecc71', borderRadius: 4 },
+            { label: 'Expenses ($)', data: [totalExpenses], backgroundColor: '#e74c3c', borderRadius: 4 },
+            { label: 'Net Profit ($)', data: [netProfit], backgroundColor: primaryColor, borderRadius: 4 }
           ]
         },
         options: {
@@ -2196,25 +2188,43 @@ const app = {
       });
 
     } else if (activeReportTab === 'products') {
-      chartTitle.textContent = "Product Units Sold (This Month)";
+      chartTitle.textContent = "Best Selling Products";
+
+      const productCounts = {};
+      ordersInRange.forEach(o => {
+        if (!o.items) return;
+        const itemsList = o.items.split(/[,;\+]/).map(i => i.trim()).filter(Boolean);
+        itemsList.forEach(itemName => {
+          productCounts[itemName] = (productCounts[itemName] || 0) + 1;
+        });
+      });
+
+      const sortedProd = Object.keys(productCounts)
+        .map(name => ({ name, count: productCounts[name] }))
+        .sort((a, b) => b.count - a.count);
+
+      const best = sortedProd[0];
       metric1Lbl.textContent = "Best Seller";
-      metric1Val.textContent = "Floral Cupcakes";
+      metric1Val.textContent = best ? best.name : 'None';
       metric1Val.className = "box-value";
+
       metric2Lbl.textContent = "Units Sold";
-      metric2Val.textContent = "45 Units";
+      metric2Val.textContent = best ? `${best.count} Orders` : '0 Units';
+
       metric3Lbl.textContent = "Second Best";
-      metric3Val.textContent = "Birthday Cakes (28)";
+      metric3Val.textContent = sortedProd[1] ? `${sortedProd[1].name} (${sortedProd[1].count})` : 'None';
+
       metric4Lbl.textContent = "Unique Catalog Items";
-      metric4Val.textContent = "8 Products";
+      metric4Val.textContent = `${sortedProd.length} Products`;
       metric4Val.className = "box-value text-info";
 
       this.charts.reportsMain = new Chart(ctxReport, {
         type: 'bar',
         data: {
-          labels: ['Floral Cupcakes', 'Birthday Cakes', 'Cookies', 'Brownies', 'Cupcake Bouquets'],
+          labels: sortedProd.length ? sortedProd.slice(0, 7).map(p => p.name) : ['No Orders'],
           datasets: [{
             label: 'Orders Count',
-            data: [45, 28, 22, 18, 15],
+            data: sortedProd.length ? sortedProd.slice(0, 7).map(p => p.count) : [0],
             backgroundColor: '#8e44ad',
             borderRadius: 6
           }]
@@ -2233,30 +2243,39 @@ const app = {
     } else if (activeReportTab === 'customers') {
       chartTitle.textContent = "Top Customers Spent ($)";
 
-      const sortedCust = [...this.customers].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
+      const custMap = {};
+      ordersInRange.forEach(o => {
+        if (!o.customerName) return;
+        custMap[o.customerName] = (custMap[o.customerName] || 0) + (o.total ?? o.amount ?? 0);
+      });
+
+      const sortedCust = Object.keys(custMap)
+        .map(name => ({ name, spent: custMap[name] }))
+        .sort((a, b) => b.spent - a.spent);
 
       metric1Lbl.textContent = "MVP Customer";
-      metric1Val.textContent = sortedCust[0] ? sortedCust[0].name : '-';
+      metric1Val.textContent = sortedCust[0] ? sortedCust[0].name : 'None';
       metric1Val.className = "box-value";
-      metric2Lbl.textContent = "MVP Total Spent";
-      metric2Val.textContent = sortedCust[0] ? `$${sortedCust[0].totalSpent.toFixed(2)}` : '$0.00';
-      metric3Lbl.textContent = "Average Spending";
 
-      const totalSpentAll = this.customers.reduce((sum, c) => sum + c.totalSpent, 0);
-      const avgSpent = this.customers.length > 0 ? totalSpentAll / this.customers.length : 0;
+      metric2Lbl.textContent = "MVP Total Spent";
+      metric2Val.textContent = sortedCust[0] ? `$${sortedCust[0].spent.toFixed(2)}` : '$0.00';
+
+      metric3Lbl.textContent = "Average Spending";
+      const totalSpentAll = sortedCust.reduce((s, c) => s + c.spent, 0);
+      const avgSpent = sortedCust.length > 0 ? totalSpentAll / sortedCust.length : 0;
       metric3Val.textContent = `$${avgSpent.toFixed(2)}`;
 
-      metric4Lbl.textContent = "Total Database Size";
-      metric4Val.textContent = `${this.customers.length} Contacts`;
+      metric4Lbl.textContent = "Active Customers";
+      metric4Val.textContent = `${sortedCust.length} Contacts`;
       metric4Val.className = "box-value text-neutral";
 
       this.charts.reportsMain = new Chart(ctxReport, {
         type: 'bar',
         data: {
-          labels: sortedCust.map(c => c.name),
+          labels: sortedCust.length ? sortedCust.slice(0, 7).map(c => c.name) : ['No Customers'],
           datasets: [{
             label: 'Total Spent ($)',
-            data: sortedCust.map(c => c.totalSpent),
+            data: sortedCust.length ? sortedCust.slice(0, 7).map(c => c.spent) : [0],
             backgroundColor: '#3498db',
             borderRadius: 6
           }]
